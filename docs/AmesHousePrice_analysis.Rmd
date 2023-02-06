@@ -1,0 +1,3586 @@
+---
+title: "Kaggle Housing Prices Project – Part 2"
+author: "Ngoc Nguyen"
+date: "2022-10-01"
+output: 
+  html_document:
+    toc: true
+    number_sections: true
+    toc_depth: 3
+    toc_float:
+      collapsed: true
+    df_print: kable
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+options(scipen = 999)
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+library(dplyr)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+library(reshape2)
+library(fastDummies)
+library(scales)
+library(car)
+```
+
+```{r import_data, include = FALSE, collapse = TRUE}
+HouseSales <- read.csv("train.csv")
+rows <- nrow(HouseSales)
+columns <-ncol(HouseSales)
+HS <- HouseSales[ , c("SalePrice", "OverallQual", "GrLivArea", "Neighborhood", "MSSubClass", "FullBath", "BsmtFullBath", "GarageArea", "TotalBsmtSF", "X1stFlrSF", "X2ndFlrSF", "LotArea", "LotConfig", "YearBuilt", "Exterior1st", "HouseStyle", "MasVnrType", "MasVnrArea", "BedroomAbvGr", "KitchenQual", "TotRmsAbvGrd", "YrSold")]
+```
+
+
+# Introduction
+
+This document details the univariate of the 24 columns and bivariate exploration of variables with noticeable correlation with house sale price (38 columns) of the Kaggle Advanced Regression Housing Price competition [train.csv](https://www.kaggle.com/competitions/house-prices-advanced-regression-techniques/data?select=train.csv) dataset. The 24 columns representing 24 house characteristics include:
+
+* `SalePrice`
+* `OverallQual`
+* `Neighborhood`
+* `MSSubClass`
+* `TotalBath`: Number of full bath (`FullBath` + `BsmtFullBath` + `HalfBath` + `BsmtHalfBath`)
+* `GarageArea`: Size of garage in square feet
+* `TotalBsmtSF`
+* `1stFlrSF`
+* `2ndFlrSF`
+* `GrLivArea`
+* `LotArea`: Lot size in square feet
+* `LotConfig`: Lot configuration 
+* `AgeSold`: House age (`YrSold` - `YearBuilt`) 
+* `Exterior1st`: Exterior covering on house 
+* `HouseStyle`: Style of dwelling 
+* `MasVnrType`: Masonry veneer type 
+* `MasVnrArea`: Masonry veneer area in square feet 
+* `BedroomAbvGr`: Number of bedrooms above basement level 
+* `KitchenQual`: Kitchen quality
+* `TotRmsAbvGrd`: Total rooms above grade (does not include bathrooms)
+* `LotFrontage`: Linear feet of street connected to property
+* `BldgType`: Type of dwelling
+* `RemodSold`: The time difference in years between when a house was remodeled and when it was sold (`YrSold` - `YearRemodAdd`)
+* `BsmtFinSF1`: Quality of basement finished area in square feet
+
+The original data set consists of **`r rows`** rows and **`r columns`** of data. The first part of this document provides the univariate results for each of the 24 variables.  Next, the bivariate analysis is conducted along with a discussion of which predictors were found to be most strongly related to SalePrice.  Finally, we note any significant relationships that exist between the shortlisted predictor variables. 
+
+
+# Univariate Analysis and Possible Transformation
+
+## `SalePrice`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean <- round(mean(HS$SalePrice),0)
+min <- round(min(HS$SalePrice),0)
+max <- round(max(HS$SalePrice),0)
+median <- round(median(HS$SalePrice),0)
+sd <- round(sd(HS$SalePrice))
+```
+
+Saleprice represents the dollar value that each house in the sample sold for.  Of the `r rows` prices included in the column, the minimum saleprice was \$`r min`, the mean was \$`r mean`, the median was \$`r median`, the max was \$`r max`, and the standard deviation was \$`r sd`.  The column contained no missing values.  Visual inspection of both a density plot and a boxplot, revealed that the data was right skewed with most SalePrices falling between \$100,000 and \$200,000. However, the column also contains several very large values that range from approximately \$375,000 to $750,000.  This indicates that we will need to be judicious in our exploration to identify outlier based on exceedingly high sale prices.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+ggplot(HS, aes(SalePrice)) + 
+  geom_density() + 
+  scale_x_continuous(labels = dollar_format()) +
+  labs(title = "Density plot - SalePrice")
+ggplot(HS, aes(SalePrice)) + geom_boxplot() + 
+  scale_x_continuous(labels = dollar_format()) +
+  labs(title = "Density plot - SalePrice")
+```
+
+From the density and boxplot, we can see that `SalePrice` distribution has a right skew. Therefore, non-linear transformation should be applied to bring the data into a more normally distributed shape. Since log10 transformation is both suitable for monetary variables (like `SalePrice`) and able to shift data shape to the right, this transformation will be implemented on `SalePrice`.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$SalePrice_transformed <- log10(HS$SalePrice)
+
+ggplot(HS, aes(SalePrice_transformed)) + 
+  geom_density()+
+  labs(title = "Density plot - SalePrice_transformed")
+```
+
+
+## `OverallQual`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean <- round(mean(HS$OverallQual),0)
+min <- round(min(HS$OverallQual),0)
+max <- round(max(HS$OverallQual),0)
+median <- round(median(HS$OverallQual),0)
+sd <- round(sd(HS$OverallQual))
+```
+
+OverallQual represents the material and finish quality of each house in the sample.  Of the `r rows` prices included in the column, the minimum OverallQual was `r min`, the mean was `r mean`, the median was `r median`, the max was `r max`, and the standard deviation was `r sd`.  The column contained no missing values.  Visual inspection of both a density plot and a boxplot, revealed that the data was imputed with integers, because there are some troughs between the whole numbers such as 5,6 and 7.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(OverallQual)) + 
+  geom_density()+
+  scale_x_continuous(breaks = seq(1,10,1), limits = c(1,10)) +
+  labs(title = "Density plot - OverallQual")
+
+ggplot(HS, aes(OverallQual)) + geom_boxplot() + 
+  scale_x_continuous(breaks = seq(0,10,1)) +
+  labs(title = "Density plot - OverallQual")
+```
+
+The results show that most houses have an overall quality of 5-7. The column contains no unusual or missing values that need cleaning. It looks like only a few rows have OverallQual ratings less than 4 and above 9.  
+
+
+## `Neighborhood`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+count <- length(unique(HS$Neighborhood))
+```
+
+The neighborhood categorical variable represents the area in Ames, Iowa where each house exists. In total, `r count` unique neighborhoods exist in the file. Several of those neighborhood contain very few observations.  For example, Blmngton, BrDale, and Bluest each represented less than 1% of the data, while 15% of the observations are in the NAmes neighborhood. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+Neighborhood_props <- data.frame(round(prop.table(table(HS$Neighborhood)),2))
+Neighborhood_props <- rename(Neighborhood_props, Neighborhood = Var1, Proportion = Freq)
+
+
+Neighborhood_props %>%
+  arrange(desc(Proportion)) %>%
+  kbl(caption = "Table1: Neighborhood Proportions") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+
+
+ggplot(HS, aes(Neighborhood)) + 
+  geom_bar() + coord_flip() 
+```
+
+Since there are a lot of neighborhoods, further correlation analysis should be conducted to decide which neighbors are strongly correlated with SalePrice to be kept in the prediction model. Grouping of meaningful and non-meaningful neighborhood predictors can be conducted in further data cleaning process.
+
+## `MSSubClass`
+
+The MSSubClass categorical variable represents the the building class of each house. Even though `MSSubClass` is a numeric column in the dataset, it should be treated as a catergorical variable. Because, the values of `MSSubClass` represent different MSSubClass types instead of having a numeric meaning.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$MSSubClass <- as.factor(HS$MSSubClass)
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+count <- length(unique(HS$MSSubClass))
+```
+
+In total, `r count` unique building classes exist in the file. Several of those neighborhood contain very few observations.  For example, 40 represented close to 0% of the data, while 37% of the observations are of 20 building class. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+MSSubClass_props <- data.frame(round(prop.table(table(HS$MSSubClass)),2))
+MSSubClass_props <- rename(MSSubClass_props, MSSubClass = Var1, Proportion = Freq)
+
+
+MSSubClass_props %>%
+  arrange(desc(Proportion)) %>%
+  kbl(caption = "Table2: MSSubClass Proportions") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+
+
+ggplot(HS, aes(MSSubClass)) + 
+  geom_bar() + coord_flip() 
+```
+
+Since there are a lot of MSSubClass, further correlation analysis should be conducted to decide which building classes are strongly correlated with SalePrice to be kept in the prediction model. Grouping of meaningful and non-meaningful MSSubClass predictors can be conducted in further data cleaning process.
+
+
+## `TotalFullBath`
+
+The TotalFullBath represents the total number of full bathrooms of each house, including both full bathrooms above ground and under basement. This column is the sum of `FullBath` and `BsmtFullBath`. Even though `TotalFullBath` is returned as a numeric variable after calculation, the column should be treated as categorical to see the detailed statistics for each level of total number of full bathrooms.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS["TotalFullBath"] <- HS$FullBath + HS$BsmtFullBath
+HS$TotalFullBath <- as.factor(HS$TotalFullBath)
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+count <- length(unique(HS$TotalFullBath))
+```
+
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+TotalFullBath_props <- data.frame(round(prop.table(table(HS$TotalFullBath)),2))
+TotalFullBath_props <- rename(TotalFullBath_props, TotalFullBath = Var1, Proportion = Freq)
+
+
+TotalFullBath_props %>%
+  arrange(desc(Proportion)) %>%
+  kbl(caption = "Table3: TotalFullBath Proportions") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+
+
+ggplot(HS, aes(TotalFullBath)) + 
+  geom_bar() + coord_flip() 
+```
+
+In total, `r count` total number of full bathrooms exist in the file. Several of those TotalFullBath contain very few observations.  For example, 0, 4, 6 total numbers of full bath represented equal or lower than 1% of the data, while 51% of the observations have 2 full bathrooms in total. 
+
+
+## `GarageArea`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean <- round(mean(HS$GarageArea),0)
+min <- round(min(HS$GarageArea),0)
+max <- round(max(HS$GarageArea),0)
+median <- round(median(HS$GarageArea),0)
+sd <- round(sd(HS$GarageArea))
+```
+
+The GarageArea represents the size of garage in square feet of each house. Of the `r rows` prices included in the column, the minimum GarageArea was `r min`, the mean was `r mean`, the median was `r median`, the max was `r max`, and the standard deviation was `r sd`.  The column contained no missing values. Visual inspection of both a density plot and a boxplot, revealed that the data was right skewed with most GarageArea falling between 300 and 600. However, the column also contains several large values that range from approximately 1000 to 1450. This indicates that we will need to be judicious in our exploration to identify outlier based on high GarageArea values.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(GarageArea)) + 
+  geom_density() +
+  scale_x_continuous(breaks = seq(0,1500,100)) +
+  labs(title = "Density plot - GarageArea")
+
+ggplot(HS, aes(GarageArea)) + 
+  geom_boxplot() +
+  scale_x_continuous(breaks = seq(0,1500,100)) +
+  labs(title = "Boxplot - GarageArea")
+```
+
+From the density and boxplot, we can see that `GarageArea` distribution has a right skew. Therefore, non-linear transformation should be applied to bring the data into a more normally distributed shape. Since square root transformation can shift data shape to the right, this transformation will be implemented on `GarageArea`.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$GarageArea_transformed <- sqrt(HS$GarageArea)
+
+ggplot(HS, aes(GarageArea_transformed)) + 
+  geom_density()+
+  labs(title = "Density plot - GarageArea_transformed")
+```
+
+## `TotalBsmtSF`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean <- round(mean(HS$GarageArea),0)
+min <- round(min(HS$GarageArea),0)
+max <- round(max(HS$GarageArea),0)
+median <- round(median(HS$GarageArea),0)
+sd <- round(sd(HS$GarageArea))
+```
+
+The TotalBsmtSF represents the total basement area in square feet of each house in the sample. Of the `r rows` prices included in the column, the minimum TotalBsmtSF was `r min`, the mean was `r mean`, the median was `r median`, the max was `r max`, and the standard deviation was `r sd`.  The column contained no missing values. Visual inspection of both a density plot and a boxplot, revealed that the data was very right skewed with most TotalBsmtSF falling between 750 and 1300. However, the column also contains several large values that range from approximately 2000 to 6000 and some very small values at 0. This indicates that we will need to be judicious in our exploration to identify outlier based on high TotalBsmtSF values.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(TotalBsmtSF)) + 
+  geom_density() +
+  scale_x_continuous(breaks = seq(0,6000,500)) +
+  labs(title = "Density plot - TotalBsmtSF")
+
+ggplot(HS, aes(TotalBsmtSF)) + 
+  geom_boxplot() +
+  scale_x_continuous(breaks = seq(0,6000,500)) +
+  labs(title = "Boxplot - TotalBsmtSF")
+```
+
+From the density and boxplot, we can see that `TotalBsmtSF` distribution has a right skew. Therefore, non-linear transformation should be applied to bring the data into a more normally distributed shape. Since cube root transformation can shift data shape to the right, this transformation will be implemented on `TotalBsmtSF`.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$TotalBsmtSF_transformed <- (HS$TotalBsmtSF)^(1/3)
+
+ggplot(HS, aes(TotalBsmtSF_transformed)) + 
+  geom_density()+
+  labs(title = "Density plot - TotalBsmtSF_transformed")
+```
+
+## `1stFlrSF`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean <- round(mean(HS$X1stFlrSF),0)
+min <- round(min(HS$X1stFlrSF),0)
+max <- round(max(HS$X1stFlrSF),0)
+median <- round(median(HS$X1stFlrSF),0)
+sd <- round(sd(HS$X1stFlrSF))
+```
+
+The 1stFlrSF represents the first floor area in square feet of each house in the sample. Of the `r rows` prices included in the column, the minimum 1stFlrSF was `r min`, the mean was `r mean`, the median was `r median`, the max was `r max`, and the standard deviation was `r sd`.  The column contained no missing values. Visual inspection of both a density plot and a boxplot, revealed that the data was very right skewed with most 1stFlrSF falling between 800 and 1300. However, the column also contains several large values that range from approximately 2200 to 4700. This indicates that we will need to be judicious in our exploration to identify outlier based on high 1stFlrSF values.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(X1stFlrSF)) + 
+  geom_density() +
+  scale_x_continuous(breaks = seq(0,5000,500)) +
+  labs(title = "Density plot - 1stFlrSF")
+
+ggplot(HS, aes(X1stFlrSF)) + 
+  geom_boxplot() +
+  scale_x_continuous(breaks = seq(0,5000,500)) +
+  labs(title = "Boxplot - 1stFlrSF")
+```
+
+
+From the density and boxplot, we can see that `1stFlrSF` distribution has a right skew. Therefore, non-linear transformation should be applied to bring the data into a more normally distributed shape. Since natural logarithm transformation can shift data shape to the right, this transformation will be implemented on `1stFlrSF`.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$X1stFlrSF_transformed <- log(HS$X1stFlrSF)
+
+ggplot(HS, aes(X1stFlrSF_transformed)) + 
+  geom_density()+
+  labs(title = "Density plot - 1stFlrSF_transformed")
+```
+
+
+## `2ndFlrSF`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean <- round(mean(HS$X2ndFlrSF),0)
+min <- round(min(HS$X2ndFlrSF),0)
+max <- round(max(HS$X2ndFlrSF),0)
+median <- round(median(HS$X2ndFlrSF),0)
+sd <- round(sd(HS$X2ndFlrSF))
+```
+
+The 2ndFlrSF represents the second floor area in square feet of each house in the sample. Of the `r rows` prices included in the column, the minimum 2ndFlrSF was `r min`, the mean was `r mean`, the median was `r median`, the max was `r max`, and the standard deviation was `r sd`.  The column contained no missing values. Visual inspection of both a density plot and a boxplot, revealed that the data was right skewed with most 2ndFlrSF falling between 0 and 800. However, the column also contains several large values that range from approximately 1800 to 2100. This indicates that we will need to be judicious in our exploration to identify outlier based on high 2ndFlrSF values.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(X2ndFlrSF)) + 
+  geom_density() +
+  scale_x_continuous(breaks = seq(0,2100,200)) +
+  labs(title = "Density plot - 2ndFlrSF")
+
+ggplot(HS, aes(X2ndFlrSF)) + 
+  geom_boxplot() +
+  scale_x_continuous(breaks = seq(0,2100,200)) +
+  labs(title = "Boxplot - 2ndFlrSF")
+```
+
+From the density and boxplot, we can see that `2ndFlrSF` distribution has strange shape. Applying non-linear transformation will not bring the data into a normally distributed shape. 
+
+
+For example, before applying natural logarithm transformation to `2ndFlrSF`, we have to add some small number to `2ndFlrSF` values of 0 to avoid creating non-finite values. 
+
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$X2ndFlrSF_transformed <- 0.0000001 + HS$X2ndFlrSF
+HS$X2ndFlrSF_transformed <- log(HS$X2ndFlrSF_transformed)
+
+ggplot(HS, aes(X2ndFlrSF_transformed)) + 
+  geom_density()+
+  labs(title = "Density plot - 2ndFlrSF_transformed")
+```
+
+The problem lies in the fact that half or more houses have 0 second floor area (the median of `2ndFlrSF` is `r median`), which implicates those are one-story house. In this case, if we want to include `2ndFlrSF` in the prediction model, we have to combine it with other variables to create a new meaningful predictor. Further cleaning work will address this problem.
+
+## `GrLivArea`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean <- round(mean(HS$GrLivArea),0)
+min <- round(min(HS$GrLivArea),0)
+max <- round(max(HS$GrLivArea),0)
+median <- round(median(HS$GrLivArea),0)
+sd <- round(sd(HS$GrLivArea))
+```
+
+The GrLivArea represents the above grade (ground) living area in square feet of each house in the sample. Of the `r rows` prices included in the column, the minimum GrLivArea was `r min`, the mean was `r mean`, the median was **r median**, the max was `r max`, and the standard deviation was `r sd`.  The column contained no missing values. Visual inspection of both a density plot and a boxplot, revealed that the data was right skewed with most GrLivArea falling between 1200 and 1750. However, the column also contains several large values that range from approximately 2750 to 5700. This indicates that we will need to be judicious in our exploration to identify outlier based on high GrLivArea values.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(GrLivArea)) + 
+  geom_density() +
+  scale_x_continuous(breaks = seq(0,6000,500)) +
+  labs(title = "Density plot - GrLivArea")
+
+ggplot(HS, aes(GrLivArea)) + 
+  geom_boxplot() +
+  scale_x_continuous(breaks = seq(0,6000,500)) +
+  labs(title = "Boxplot - GrLivArea")
+```
+
+From the density and boxplot, we can see that `GrLivArea` distribution has a right skew. Therefore, non-linear transformation should be applied to bring the data into a more normally distributed shape. Since natural logarithm transformation can shift data shape to the right, this transformation will be implemented on `GrLivArea`.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$GrLivArea_transformed <- log(HS$GrLivArea)
+
+ggplot(HS, aes(GrLivArea_transformed)) + 
+  geom_density()+
+  labs(title = "Density plot - GrLivArea_transformed")
+```
+
+## `LotArea`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean <- round(mean(HS$LotArea),0)
+min <- round(min(HS$LotArea),0)
+max <- round(max(HS$LotArea),0)
+median <- round(median(HS$LotArea),0)
+sd <- round(sd(HS$LotArea))
+```
+
+The LotArea represents the lot size in square feet of each house in the sample. Of the `r rows` prices included in the column, the minimum LotArea was `r min`, the mean was `r mean`, the median was `r median`, the max was `r max`, and the standard deviation was `r sd`.  The column contained no missing values. 
+Visual inspection of both a density plot and a boxplot, revealed that the data was extremely right skewed with most LotArea falling between 0 and 2000. However, the column also contains several large values that range from approximately 5000 to 250000. This indicates that we will need to be judicious in our exploration to identify outlier based on high LotArea values.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(LotArea)) + 
+  geom_density() +
+  labs(title = "Density plot - LotArea")
+
+ggplot(HS, aes(LotArea)) + 
+  geom_boxplot() +
+  labs(title = "Boxplot - LotArea")
+```
+
+From the density and boxplot, we can see that `LotArea` distribution has a significant right skew. Therefore, non-linear transformation should be applied to bring the data into a more normally distributed shape. Since logarithm with base 10 transformation can considerably shift data shape to the right, this transformation will be implemented on `LotArea`.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$LotArea_transformed <- log10(HS$LotArea)
+
+ggplot(HS, aes(LotArea_transformed)) + 
+  geom_density()+
+  labs(title = "Density plot - LotArea_transformed")
+```
+
+
+## `LotConfig`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+count <- length(unique(HS$LotConfig))
+```
+
+The LotConfig categorical variable represents the lot configuration of each house in the sample. In total, `r count` unique lot configuration exist in the file. Two of those configuration, FR2 and FR3 , contain very few observations with proportions of less than 5%.  Meanwhile, 72% of the observations have Inside lot configuration. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+LotConfig_props <- data.frame(round(prop.table(table(HS$LotConfig)),2))
+LotConfig_props <- rename(LotConfig_props, LotConfig = Var1, Proportion = Freq)
+
+
+LotConfig_props %>%
+  arrange(desc(Proportion)) %>%
+  kbl(caption = "Table4: LotConfig Proportions") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+
+
+ggplot(HS, aes(LotConfig)) + 
+  geom_bar() + coord_flip() 
+```
+
+Further correlation analysis should be conducted to decide which lot configuration are strongly correlated with SalePrice to be kept in the prediction model.
+
+## `AgeSold`
+
+The AgeSold represents the number of years between when each house was built and when it was sold, which shows the newness of each house as of when it was sold. The variable is calculated by the difference between YrSold and YearBuilt.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS["AgeSold"] <- (HS$YrSold - HS$YearBuilt)
+
+mean <- round(mean(HS$AgeSold),0)
+min <- round(min(HS$AgeSold),0)
+max <- round(max(HS$AgeSold),0)
+median <- round(median(HS$AgeSold),0)
+sd <- round(sd(HS$AgeSold))
+```
+
+Of the `r rows` prices included in the column, the minimum AgeSold was `r min`, the mean was `r mean`, the median was `r median`, the max was `r max`, and the standard deviation was `r sd`.  The column contained no missing values. Visual inspection of both a density plot and a boxplot, revealed that the data was slightly right skewed with most AgeSold falling between 10 and 50. However, the column also contains several large values that range from approximately 120 to 140. This indicates that we will need to be judicious in our exploration to identify outlier based on high Age values.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(AgeSold)) + 
+  geom_density() +
+  scale_x_continuous(breaks = seq(0,250,10)) +
+  labs(title = "Density plot - Age")
+
+ggplot(HS, aes(AgeSold)) + 
+  geom_boxplot() +
+  scale_x_continuous(breaks = seq(0,250,10)) +
+  labs(title = "Boxplot - AgeSold")
+```
+
+From the density and boxplot, we can see that `AgeSold` distribution has a slight right skew. Therefore, non-linear transformation should be applied to bring the data into a more normally distributed shape. Since square root transformation can shift data shape to the right, this transformation will be implemented on `AgeSold`.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$AgeSold_transformed <- sqrt(HS$AgeSold)
+
+ggplot(HS, aes(AgeSold_transformed)) + 
+  geom_density()+
+  labs(title = "Density plot - AgeSold_transformed")
+```
+
+## `Exterior1st`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+count <- length(unique(HS$Exterior1st))
+```
+
+The Exterior1st categorical variable represents the exterior covering on each house in the sample. In total, `r count` unique lot configuration exist in the file. Several of those coverings, AsbShng, AsphShn, BrkComm, CBlock, ImStucc	and Stone , contain very few observations with proportions of equal or less than 1%.  Meanwhile, 35% of the observations have VinylSd exterior covering. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+Exterior1st_props <- data.frame(round(prop.table(table(HS$Exterior1st)),2))
+Exterior1st_props <- rename(Exterior1st_props, Exterior1st = Var1, Proportion = Freq)
+
+
+Exterior1st_props %>%
+  arrange(desc(Proportion)) %>%
+  kbl(caption = "Table5: Exterior1st Proportions") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+
+
+ggplot(HS, aes(Exterior1st)) + 
+  geom_bar() + coord_flip() 
+```
+
+Further correlation analysis should be conducted to decide which exterior coverings are strongly correlated with SalePrice to be kept in the prediction model.
+
+
+## `HouseStyle` 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+count <- length(unique(HS$HouseStyle))
+```
+
+The HouseStyle categorical variable represents the dwelling style of each house in the sample. In total, `r count` unique lot configuration exist in the file. Several of those HouseStyle, 1.5Unf, 2.5Fin, 2.5Unf, contain very few observations with proportions of 1%.  Meanwhile, 50% of the observations are of 1Story HouseStyle. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+HouseStyle_props <- data.frame(round(prop.table(table(HS$HouseStyle)),2))
+HouseStyle_props <- rename(HouseStyle_props, HouseStyle = Var1, Proportion = Freq)
+
+
+HouseStyle_props %>%
+  arrange(desc(Proportion)) %>%
+  kbl(caption = "Table6: HouseStyle Proportions") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+
+
+ggplot(HS, aes(HouseStyle)) + 
+  geom_bar() + coord_flip() 
+```
+
+Further correlation analysis should be conducted to decide which HouseStyle are strongly correlated with SalePrice to be kept in the prediction model.
+
+
+## `MasVnrType`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+count <- length(unique(HS$MasVnrType))
+na_count <- nrow(HS[is.na(HS$MasVnrArea),])
+```
+
+The MasVnrType categorical variable represents the masonry veneer type of each house in the sample. In total, `r count` unique lot configuration exist in the file. Among those MasVnrtype, BrkCmn contains very few observations with proportions of 1%.  Meanwhile, 60% of the observations have no masonry veneer type. The column contained `r na_count` missing values. Thoses values will be updated as the "Unknown" type for better analysis.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS[is.na(HS$MasVnrType), "MasVnrType"] <- "Unknown"
+```
+
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+MasVnrType_props <- data.frame(round(prop.table(table(HS$MasVnrType)),2))
+MasVnrType_props <- rename(MasVnrType_props, MasVnrType = Var1, Proportion = Freq)
+
+
+MasVnrType_props %>%
+  arrange(desc(Proportion)) %>%
+  kbl(caption = "Table7: MasVnrType Proportions") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+
+
+ggplot(HS, aes(MasVnrType)) + 
+  geom_bar() + coord_flip() 
+```
+
+Further correlation analysis should be conducted to decide which masonry veneer types are strongly correlated with SalePrice to be kept in the prediction model.
+
+
+## `MasVnrArea`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean <- round(mean(HS$MasVnrArea),0)
+min <- round(min(HS$MasVnrArea),0)
+max <- round(max(HS$MasVnrArea),0)
+median <- round(median(HS$MasVnrArea),0)
+sd <- round(sd(HS$MasVnrArea))
+
+na_count <- nrow(HS[is.na(HS$MasVnrArea),])
+```
+
+
+MasVnrArea represents the masonry veneer area in square feet of each house in the sample.  Of the `r rows` prices included in the column, the min masonry veneer area was `r min`, the mean was `r mean`, the median was `r median`, the max was `r max`, and the standard deviation was `r sd`.  The column contained `r na_count` missing values. Therefore, these missing values should be updated. One possible solution is to replace them with the mean MasVnrArea based on the specific neighborhood that the house is located in. Further data cleaning work will address this problem.
+
+Visual inspection of both a density plot and a boxplot, revealed that the data was right skewed with most MasVnrArea falling between 0 and 200. However, the column also contains several very large values that range from approximately 400 to 1600.  This indicates that we will need to be judicious in our exploration to identify outlier based on exceedingly high MasVnrArea.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+ggplot(HS, aes(MasVnrArea)) + 
+  geom_density() + 
+  scale_x_continuous(breaks = seq(0,1600,200)) +
+  labs(title = "Density plot - MasVnrArea")
+ggplot(HS, aes(MasVnrArea)) + geom_boxplot() + 
+  scale_x_continuous(breaks = seq(0,1600,200)) +
+  labs(title = "Density plot - MasVnrArea")
+```
+
+
+From the density and boxplot, we can see that `MasVnrArea` distribution has a significant right skew. Therefore, non-linear transformation should be applied to bring the data into a more normally distributed shape. Since natural logarithm transformation can considerably shift data shape to the right, this transformation will be implemented on `MasVnrArea`.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$MasVnrArea_transformed <- log(HS$MasVnrArea)
+
+ggplot(HS, aes(MasVnrArea_transformed)) + 
+  geom_density()+
+  labs(title = "Density plot - MasVnrArea_transformed")
+```
+
+
+## `BedroomAbvGr` 
+
+BedroomAbvGr represents the number of bedrooms above basement level of each house in the sample. Even though `BedroomAbvGr` is numeric in the dataset, we want to treat it as categorical variable to see the detailed statistics for each level of total full bathroom number.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$BedroomAbvGr <- as.factor(HS$BedroomAbvGr)
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+count <- length(unique(HS$BedroomAbvGr))
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+BedroomAbvGr_props <- data.frame(round(prop.table(table(HS$BedroomAbvGr)),2))
+BedroomAbvGr_props <- rename(BedroomAbvGr_props, BedroomAbvGr = Var1, Proportion = Freq)
+
+
+BedroomAbvGr_props %>%
+  arrange(desc(Proportion)) %>%
+  kbl(caption = "Table8: BedroomAbvGr Proportions") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+
+
+ggplot(HS, aes(TotalFullBath)) + 
+  geom_bar() + coord_flip() 
+```
+
+In total, `r count` total number of bedrooms above ground exist in the file. Several of those BedroomAbvGr contain very few observations.  For example, 0,6,8 numbers of bedrooms represented closely t 0% of the data, while 55% of the observations have 3 bedrooms. 
+
+
+## `KitchenQual`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+count <- length(unique(HS$KitchenQual))
+```
+
+The KitchenQual categorical variable represents the kitchen quality of each house in the sample. In total, `r count` unique lot configuration exist in the file. 
+Among those, Fa kitchen quality contains very few observations with proportions of 3%.  Meanwhile, 50% and 40% of the observations are of TA and Gd kitchen qualities, respectively. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+KitchenQual_props <- data.frame(round(prop.table(table(HS$KitchenQual)),2))
+KitchenQual_props <- rename(KitchenQual_props, KitchenQual = Var1, Proportion = Freq)
+
+
+KitchenQual_props %>%
+  arrange(desc(Proportion)) %>%
+  kbl(caption = "Table9: KitchenQual Proportions") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+
+
+ggplot(HS, aes(KitchenQual)) + 
+  geom_bar() + coord_flip() 
+```
+
+Further correlation analysis should be conducted to decide which KitchenQual are strongly correlated with SalePrice to be kept in the prediction model.
+
+
+## `TotRmsAbvGrd`
+
+TotRmsAbvGrd represents the total number of rooms above grade (not including bathrooms) of each house in the sample. Even though `TotRmsAbvGrd` is numeric in the dataset, we want to treat it as categorical variable to see the detailed statistics for each level of total room number.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$TotRmsAbvGrd <- as.factor(HS$TotRmsAbvGrd)
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+count <- length(unique(HS$TotRmsAbvGrd))
+```
+
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+TotRmsAbvGrd_props <- data.frame(round(prop.table(table(HS$TotRmsAbvGrd)),2))
+TotRmsAbvGrd_props <- rename(TotRmsAbvGrd_props, TotRmsAbvGrd = Var1, Proportion = Freq)
+
+
+TotRmsAbvGrd_props %>%
+  arrange(desc(Proportion)) %>%
+  kbl(caption = "Table10: TotRmsAbvGrd Proportions") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+
+
+ggplot(HS, aes(TotRmsAbvGrd)) + 
+  geom_bar() + coord_flip() 
+```
+
+In total, `r count` total number of rooms above ground exist in the file. Several of those TotRmsAbvGrd contain very few observations.  For example, 2 and 14 numbers of room represented closely t 0% of the data. Further data cleaning should be applied to determine the meaning levels that should be included in the SalePrice prediction model. 
+
+## `LotFrontage`
+
+LotFrontage represents the linear feet of street connected to property of each house in the sample. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$LotFrontage <- HouseSales$LotFrontage
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean <- round(mean(HS$LotFrontage),0)
+min <- round(min(HS$LotFrontage),0)
+max <- round(max(HS$LotFrontage),0)
+median <- round(median(HS$LotFrontage),0)
+sd <- round(sd(HS$LotFrontage))
+
+na_count <- nrow(HS[is.na(HS$LotFrontage),])
+```
+
+Of the `r rows` prices included in the column, the min LotFrontage was `r min`, the mean was `r mean`, the median was `r median`, the max was `r max`, and the standard deviation was `r sd`.  The column contained `r na_count` missing values. Further cleaning work should be conducted to replaced these missing values with suitable data that would improve the SalePrice prediction model.
+
+Visual inspection of both a density plot and a boxplot, revealed that the data was right skewed with most LotFrontage falling between 50 and 100. However, the column also contains several very large values that range from approximately 250 to slightly over 300.  This indicates that we will need to be judicious in our exploration to identify outlier based on exceedingly high LotFrontage.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+ggplot(HS, aes(LotFrontage)) + 
+  geom_density() + 
+  # scale_x_continuous(breaks = seq(0,1600,200)) +
+  labs(title = "Density plot - LotFrontage")
+ggplot(HS, aes(LotFrontage)) + geom_boxplot() + 
+  # scale_x_continuous(breaks = seq(0,1600,200)) +
+  labs(title = "Density plot - LotFrontage")
+```
+
+From the density and boxplot, we can see that `LotFrontage` distribution has a right skew. Therefore, non-linear transformation should be applied to bring the data into a more normally distributed shape. Since natural logarithm transformation can considerably shift data shape to the right, this transformation will be implemented on `LotFrontage`.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$LotFrontage_transformed <- log(HS$LotFrontage)
+
+ggplot(HS, aes(LotFrontage_transformed)) + 
+  geom_density()+
+  labs(title = "Density plot - LotFrontage_transformed")
+```
+
+
+## `BldgType`
+
+BldgType represents the type of dwelling of each house in the sample. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$BldgType <- as.factor(HouseSales$BldgType)
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+count <- length(unique(HS$BldgType))
+```
+
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+BldgType_props <- data.frame(round(prop.table(table(HS$BldgType)),2))
+BldgType_props <- rename(BldgType_props, BldgType = Var1, Proportion = Freq)
+
+
+BldgType_props %>%
+  arrange(desc(Proportion)) %>%
+  kbl(caption = "Table11: BldgType Proportions") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+
+
+ggplot(HS, aes(BldgType)) + 
+  geom_bar() + coord_flip() 
+```
+
+In total, `r count` types of dwelling exist in the file. Several of those BldgType contain very few observations.  For example, Twnhs and	2fmCon represented 3% and 2% of the data, respectively. Further data cleaning should be applied to determine the meaning levels that should be included in the SalePrice prediction model. 
+
+## `RemodSold`
+
+RemodSold represents the time gap between when each house was sold and when it was remodeled, which partially shows the quality of each house as of when it was sold. The column is calculated by subtracting YearRemodAdd from YrSold. 
+```{r, include=FALSE}
+HS$YearRemodAdd <- HouseSales$YearRemodAdd
+HS$RemodSold <- HS$YrSold - HS$YearRemodAdd
+# HS[HS$RemodSold<0,] # one obs that was remodelled after sales, not affecting saleprice, ignore
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean <- round(mean(HS$RemodSold),0)
+min <- round(min(HS$RemodSold),0)
+max <- round(max(HS$RemodSold),0)
+median <- round(median(HS$RemodSold),0)
+sd <- round(sd(HS$RemodSold))
+
+na_count <- nrow(HS[is.na(HS$RemodSold),])
+```
+
+Of the `r rows` prices included in the column, the min RemodSold was `r min`, the mean was `r mean`, the median was `r median`, the max was `r max`, and the standard deviation was `r sd`.  The column contained `r na_count` missing values. Interestingly, there is one house that was remodeled after being sold. Thus, the remodeling did not affect the SalePrice that had been decided on earlier. Since this point is not contributing to the SalePrice prediction model, it will possibly be cleaned later on.
+
+Visual inspection of both a density plot and a boxplot, revealed that the data was slightly right skewed with most RemodSold falling between 10 and 20. However, the column also contains several very large values that range from approximately 50 to 60.  This indicates that we will need to be judicious in our exploration to identify outlier based on exceedingly high RemodSold.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+
+ggplot(HS, aes(RemodSold)) + 
+  geom_density() + 
+  # scale_x_continuous(breaks = seq(0,1600,200)) +
+  labs(title = "Density plot - RemodSold")
+ggplot(HS, aes(RemodSold)) + geom_boxplot() + 
+  # scale_x_continuous(breaks = seq(0,1600,200)) +
+  labs(title = "Density plot - RemodSold")
+```
+
+From the density and boxplot, we can see that `RemodSold` distribution has a right skew. Therefore, non-linear transformation should be applied to bring the data into a more normally distributed shape. Since cube root transformation can shift data shape to the right, this transformation will be implemented on `RemodSold`.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$RemodSold_transformed <- (HS$RemodSold)^(1/3)
+
+ggplot(HS, aes(RemodSold_transformed)) + 
+  geom_density()+
+  labs(title = "Density plot - RemodSold_transformed")
+```
+
+## `BsmtFinSF1` 
+
+BsmtFinSF1 represents type 1 finished square feet of each house as of when it was sold. 
+
+```{r, include=FALSE}
+HS$BsmtFinSF1 <- HouseSales$BsmtFinSF1
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean <- round(mean(HS$BsmtFinSF1),0)
+min <- round(min(HS$BsmtFinSF1),0)
+max <- round(max(HS$BsmtFinSF1),0)
+median <- round(median(HS$BsmtFinSF1),0)
+sd <- round(sd(HS$BsmtFinSF1))
+
+na_count <- nrow(HS[is.na(HS$BsmtFinSF1),])
+```
+
+Of the `r rows` prices included in the column, the min BsmtFinSF1 was `r min`, the mean was `r mean`, the median was `r median`, the max was `r max`, and the standard deviation was `r sd`.  The column contained `r na_count` missing values. 
+
+Visual inspection of both a density plot and a boxplot, revealed that the data was slightly right skewed with most BsmtFinSF1 falling between 0 and 750. However, the column also contains several very large values that range from approximately 1750 to 2250. This indicates that we will need to be judicious in our exploration to identify outlier based on exceedingly high BsmtFinSF1.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(BsmtFinSF1)) + 
+  geom_density() + 
+  # scale_x_continuous(breaks = seq(0,1600,200)) +
+  labs(title = "Density plot - BsmtFinSF1")
+ggplot(HS, aes(BsmtFinSF1)) + geom_boxplot() + 
+  # scale_x_continuous(breaks = seq(0,1600,200)) +
+  labs(title = "Density plot - BsmtFinSF1")
+```
+
+From the density and boxplot, we can see that `BsmtFinSF1` distribution has a right skew. Therefore, non-linear transformation should be applied to bring the data into a more normally distributed shape. Since cube root transformation can shift data shape to the right, this transformation will be implemented on `BsmtFinSF1`.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$BsmtFinSF1_transformed <- (HS$BsmtFinSF1)^(1/3)
+
+ggplot(HS, aes(BsmtFinSF1_transformed)) + 
+  geom_density()+
+  labs(title = "Density plot - BsmtFinSF1_transformed")
+```
+
+
+# Bivariate analysis
+
+## Correlation between all numeric variables and SalePrice
+
+In this section, a correlation table between SalePrice and numeric variables available in the train dataset will be present. From the table, a list of highly correlated variables will be selected to have further one-to-one bivariate analysis with SalePrice and to be included in the SalePrice prediction model.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE, include=FALSE}
+HS_numeric <- select_if(HouseSales, is.numeric)
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE, include=FALSE}
+HS_numeric <- HS_numeric %>% 
+  select(-c(Id, MSSubClass, YearBuilt, BsmtFullBath, BsmtHalfBath, FullBath, HalfBath, BedroomAbvGr, YrSold, TotRmsAbvGrd)) %>%
+  mutate(AgeSold = HS$AgeSold) 
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE, include=FALSE}
+list_numeric <- colnames(HS_numeric)
+list_numeric[length(list_numeric)] <- "SalePrice"
+list_numeric[length(list_numeric)-1] <- "AgeSold"
+
+HS_numeric <- HS_numeric %>%
+  select(list_numeric)
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+cor_matrix <- cor(HS_numeric)
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_corr <- melted_cormat %>%
+  filter(Var1 != "SalePrice") %>%
+  filter(Var2 == "SalePrice")
+SalePrice_corr <- rename(SalePrice_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+SalePrice_corr %>%
+  arrange(desc(Correlation)) %>% 
+  kbl(caption = "Table12: Correlation table between SalePrice and numeric variables") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+
+From the table, we notice some interesting correlation values between SalePrice and each of these following variables: 
+
+- Correlation over 0.3 or below -0.3: `OverallQual`, `GrLivArea`, `GarageCars`, `GarageArea`, `TotalBsmtSF`, `X1stFlrSF`, `YearRemodAdd`, `Fireplaces`, `BsmtFinSF1`, `X2ndFlrSF`, `WoodDeckSF`, `OpenPorchSF`, `AgeSold`
+- Correlation between 0.09 and 0.3 or between -0.3 and -0.09: `LotArea`, `BsmtUnfSF`, `ScreenPorch`, `PoolArea`, `KitchenAbvGr`, `EnclosedPorch`.
+
+In those variables, we will conduct detailed bivariate analysis on `OverallQual`, `GrLivArea`, `GarageArea`, `TotalBsmtSF`, `X1stFlrSF`, `X2ndFlrSF`, `WoodDeckSF`, `OpenPorchSF`, `AgeSold`, `LotArea`, `BsmtUnfSF`, `ScreenPorch`, and `EnclosedPorch`.
+
+Meanwhile, `GarageCars`, `Fireplaces`, `PoolArea` and `KitchenAbvGr` will be converted into categorical to explore detailed statistics of the different levels.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+# not including transformed or cleaned data
+model_shortlist <- HouseSales %>% 
+  select(SalePrice, OverallQual, GrLivArea, GarageCars, GarageArea, TotalBsmtSF, X1stFlrSF, YearRemodAdd, Fireplaces, BsmtFinSF1, X2ndFlrSF, WoodDeckSF, OpenPorchSF, LotArea, BsmtUnfSF, ScreenPorch, PoolArea, KitchenAbvGr, EnclosedPorch) %>% 
+  mutate(AgeSold = HS$AgeSold)
+```
+
+
+## Bivariate analysis between SalePrice and highly-correlated numeric variables
+
+In this section of the report, we examine the relationships between the SalePrice and 13 shortlisted numeric variables: OverallQual, GrLivArea, GarageArea, TotalBsmtSF, X1stFlrSF, X2ndFlrSF, WoodDeckSF, OpenPorchSF, AgeSold, LotArea, BsmtUnfSF, ScreenPorch, and EnclosedPorch.
+
+### `SalePrice` & `OverallQual`
+
+The scatter plots of OverallQual relative to Saleprice confirm that there is a positive association between the two variables. In general, the higher the house's overall rating, the higher the price.  However, the changes in price appears to get larger for  houses with quality above 7.  The wide distribution of points at qualities at 8 and above indicate that prices rises more for very high quality houses. Two interesting points stand out.  Two houses that have OverallQual around 10, were sold for less than $200,000.  These points could be overly influential in any model built from the data so we should remove them during our cleaning process.    
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(OverallQual, SalePrice)) + 
+  geom_jitter(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & OverallQual")
+
+ggplot(HS, aes(OverallQual, SalePrice_transformed)) + 
+  geom_jitter(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & OverallQual")
+```
+
+
+
+### `SalePrice` & `GarageArea`
+
+The scatter plots of GarageArea relative to Saleprice confirm that there is a positive association between the two variables. In general, the larger the house's garage area bathrooms, the higher the price.  However, the changes in price appears to get larger for  houses with quality above 600.  The wide distribution of points at qualities at around 700 above indicate that prices rises more for houses with very large garage. Additionally, there are 4 outlier observations: some houses with garage areas larger than 1200 square feet but not having high SalePrice. These points could be overly influential in any model built from the data so we should remove them during our cleaning process. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(GarageArea, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_x_continuous(breaks = seq(0,1500,100)) +
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & GarageArea")
+
+ggplot(HS, aes(GarageArea_transformed, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & GarageArea_transformed")
+```
+
+
+### `SalePrice` & `TotalBsmtSF`
+
+The scatter plots of TotalBsmtSF relative to Saleprice confirm that there is a positive association between the two variables. In general, the larger the house's basement, the higher the price.  However, the changes in price appears to get larger for  houses with quality above 1000. The wide distribution of points at qualities at around 1000 above indicate that prices rises more for houses with very large basement. Additionally, there is one outlier observation: a house has basement area of more than 6000 square feet but was sold for less than $200,000. This point could be overly influential in any model built from the data so we should remove it during our cleaning process.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(TotalBsmtSF, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_x_continuous(breaks = seq(0,6000,1000)) +
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & TotalBsmtSF")
+
+ggplot(HS, aes(TotalBsmtSF_transformed, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & TotalBsmtSF_transformed")
+```
+
+
+
+### `SalePrice` & `1stFlrSF`
+
+The scatter plots of 1stFlrSF relative to Saleprice confirm that there is a positive association between the two variables. In general, the larger the house's 1st floor area, the higher the price.  However, the changes in price appears to get larger for  houses with quality above 1500.  The wide distribution of points at qualities at 1500 and above indicate that prices rises more for houses with very large 1st floor. Additionally, there is one outlier observation: a house has the 1st floor area of larger than 4500 square feet but was sold for less than $200,000. This point could be overly influential in any model built from the data so we should remove it during our cleaning process. 
+
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(X1stFlrSF, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_x_continuous(breaks = seq(0,5000,500)) +
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & 1stFlrSF")
+
+ggplot(HS, aes(X1stFlrSF_transformed, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & 1stFlrSF_transformed")
+```
+
+
+
+### `SalePrice` & `2ndFlrSF`
+
+The scatter plot of 2ndFlrSF relative to Saleprice confirms that there is a positive association between the two variables. In general, the larger the house's 2nd floor area, the higher the price.  However, the changes in price appears to get larger for  houses with quality above 1000.  The wide distribution of points at qualities at 1400 and above indicate that prices rises more for houses with very large 2nd floor. 
+
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(X2ndFlrSF, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_x_continuous(breaks = seq(0,2000,200)) +
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & 2ndFlrSF")
+ggplot(HS, aes(X2ndFlrSF, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & 2ndFlrSF")
+```
+
+
+### `SalePrice` & `GrLivArea`
+
+The point plots of GrlivArea relative to Saleprice show clearly that larger sized houses garner higher prices.  Two interesting points stand out.  Two houses that are both greater than 4500 square feet, were sold for less than $200,000. These points could be overly influential in any model built from the data so we should remove them during our cleaning process.  
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(GrLivArea, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & GrLivArea")
+
+ggplot(HS, aes(GrLivArea_transformed, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & GrLivArea_transformed")
+```
+
+
+
+### `SalePrice` & `LotArea`
+
+The point plots of LotArea relative to Saleprice show clearly that houses with larger lot garner higher prices. Three interesting points stand out. Three houses that have lot area greater than 150,000 square feet, were sold for less than $400,000. These points could be overly influential in any model built from the data so we should remove them during our cleaning process. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(LotArea, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & LotArea")
+
+ggplot(HS, aes(LotArea_transformed, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & LotArea_transformed")
+```
+
+
+### `SalePrice` & `AgeSold`
+
+The point plots of Age relative to Saleprice show clearly that houses with higher age garner lower prices. One interesting observation stand out.  One house that was built 110 years ago was sold for nearly $500,000.  This point could be overly influential in any model built from the data so we should remove it during our cleaning process. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(AgeSold, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_x_continuous(breaks = seq(0,160,20)) +
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & AgeSold")
+
+ggplot(HS, aes(AgeSold, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_x_continuous(breaks = seq(0,160,20)) +
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & AgeSold")
+```
+
+
+### `SalePrice` & `WoodDeckSF`
+
+The point plots of WoodDeckSSF relative to Saleprice show clearly that houses with larger wood deck area garner higher prices. Two interesting observation stand out.  Two house with nearly 750 square feet of wood deck were sold for under $200,000.  These point could be overly influential in any model built from the data so we should remove it during our cleaning process. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$WoodDeckSF <- HouseSales$WoodDeckSF
+ggplot(HS, aes(WoodDeckSF, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & WoodDeckSF")
+
+ggplot(HS, aes(WoodDeckSF, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & WoodDeckSF")
+```
+
+
+### `SalePrice` & `OpenPorchSF`
+
+OpenPorchSF represents the open porch area in square feet of each house in the dataset. The point plots of OpenPorchSF relative to Saleprice show clearly that houses with larger open porch area garner higher prices. One interesting observation stand out. A house with more than 600 square feet of open porch was sold for under $50,000. This point could be overly influential in any model built from the data so we should remove it during our cleaning process. Besides, there are a lot of zero values, representing houses without an open porch (656 observations).
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$OpenPorchSF <- HouseSales$OpenPorchSF
+ggplot(HS, aes(OpenPorchSF, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & OpenPorchSF")
+
+ggplot(HS, aes(OpenPorchSF, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & OpenPorchSF")
+```
+
+
+### `SalePrice` & `BsmtUnfSF`
+
+The point plots of BsmtUnfSF relative to Saleprice show that the house price remained relatively flat as the area of unfinished basement increases. Interestingly, two highest sold houses had BsmtUnfSF of more than 250 and nearly 100 square feet, respectively.  
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$BsmtUnfSF <- HouseSales$BsmtUnfSF
+ggplot(HS, aes(BsmtUnfSF, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & BsmtUnfSF")
+
+ggplot(HS, aes(BsmtUnfSF, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & BsmtUnfSF")
+```
+
+
+### `SalePrice` & `ScreenPorch`
+
+ScreenPorch represents the screen porch area in square feet of each house in the dataset. The point plots of ScreenPorch relative to Saleprice show that the house price remained relatively flat as the area of screen porch increases. Interestingly, there are a lot of observations with a value of screen porch area of 0, which represents houses without a screen porch (1344 observations). Therefore, this variable should be combined with another suitable variable for better analysis.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$ScreenPorch <- HouseSales$ScreenPorch
+ggplot(HS, aes(ScreenPorch, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & ScreenPorch")
+
+ggplot(HS, aes(ScreenPorch, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & ScreenPorch")
+```
+
+
+### `SalePrice` & `OpenScreenPorch`
+
+`OpenScreenPorch` column is created as the sum of `OpenPorch` and `ScreenPorch`. This variable represents the total area in squared feet of open and screen porch a house has.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$OpenScreenPorch <- HouseSales$OpenPorch + HouseSales$ScreenPorch
+ggplot(HS, aes(OpenScreenPorch, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & OpenScreenPorch")
+
+ggplot(HS, aes(OpenScreenPorch, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & OpenScreenPorch")
+```
+
+The point plots of OpenScreenPorchSF relative to Saleprice show clearly that houses with larger the total area of open and screen porch garner higher prices. One interesting observation stand out. A house with more than 1000 square feet of open & screen porch was sold for under $200,000. This point could be overly influential in any model built from the data so we should remove it during our cleaning process. Additionally, after combining the two variables, there are still a lot of zero values (particularly 603 observations).
+
+### `SalePrice` & `EnclosedPorch`
+
+EnclosedPorch respresents the enclosed porch area in square feet. The point plots of EnclosedPorch relative to Saleprice show that houses with larger area of enclosed porch garner slightly lower prices. There are a lot of 0 values of EnclosedPorch, respresenting houses with no enclosed porch.
+
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$EnclosedPorch <- HouseSales$EnclosedPorch
+ggplot(HS, aes(EnclosedPorch, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & EnclosedPorch")
+
+ggplot(HS, aes(EnclosedPorch, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & EnclosedPorch")
+```
+
+### `SalePrice` & `LotFrontage`
+
+The point plots of LotFrontage relative to Saleprice show that houses with larger area of LotFrontage garner higher prices. There are two interesting observations: two houses with more than 300 feet of LotFrontage were sold for only around $200,000. These two outliers will possibly be replaced in the data cleaning process.
+
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(LotFrontage, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & LotFrontage")
+
+ggplot(HS, aes(LotFrontage_transformed, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & LotFrontage_transformed")
+```
+
+### `SalePrice` & `BsmtFinSF1`
+
+The point plots of BsmtFinSF1 relative to Saleprice show that houses with larger area of BsmtFinSF1 garner higher prices. There is one interesting observation: a house with 2,250 square feet of BsmtFinSF1 was sold for only around $200,000. This outlier will possibly be replaced in the data cleaning process.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(BsmtFinSF1, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & BsmtFinSF1")
+
+ggplot(HS, aes(BsmtFinSF1_transformed, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & BsmtFinSF1_transformed")
+```
+
+### `SalePrice` & `RemodSold` 
+
+The point plots of RemodSold relative to Saleprice show that houses with longer time gap between remodeling and selling would garner lower prices. However, the correlation seems to be stronger in the first 20 years, the later time is relatively stable.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+ggplot(HS, aes(RemodSold, SalePrice)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice & RemodSold")
+
+ggplot(HS, aes(RemodSold_transformed, SalePrice_transformed)) + 
+  geom_point(alpha = 0.5) + 
+  scale_y_continuous(labels = dollar_format()) +
+  geom_smooth(method = lm) +
+  labs(title = "SalePrice_transformed & RemodSold_transformed")
+```
+
+## Bivariate analysis between SalePrice and categorical variables
+
+In this section, further one-to-one bivariate analysis with SalePrice and categorical variables available in the train dataset will be conducted. These categorical variables also include numeric variable with a few number of levels that may have different statistics. Levels of different categorical that are highly correlated with SalePrice (with the correlation above 0.09) will be shortlisted to make further analysis whether to be included in SalePrice prediction model.
+
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS_cat <- select_if(HouseSales, is.character)
+HS_cat$GarageCars <- as.factor(HouseSales$GarageCars)
+HS_cat$Fireplaces <- as.factor(HouseSales$Fireplaces)
+HS_cat$PoolArea <- as.factor(HouseSales$PoolArea)
+HS_cat$KitchenAbvGr <- as.factor(HouseSales$KitchenAbvGr)
+HS_cat$MSSubClass <- as.factor(HouseSales$MSSubClass)
+HS_cat$TotalFullBath <- as.factor(HS$TotalFullBath)
+HS_cat$TotalFullBath <- as.factor(HouseSales$OverallCond)
+HS_cat$BedroomAbvGr <- as.factor(HS$BedroomAbvGr)
+HS_cat$KitchenQual <- as.factor(HS$KitchenQual)
+HS_cat$TotRmsAbvGrd <- as.factor(HS$TotRmsAbvGrd)
+```
+
+After calculating the percentage of missing values in each categorical variables, we notice that `Alley`, `PoolQC`, `Fence` and `MiscFeature` have significantly high percentage of NAs (of more than 80% of the values in these columns are NAs). Therefore, these variables are ruled out from the bivariate analysis.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+na_per <-sapply(HS_cat, function(y) sum(length(which(is.na(y))))/nrow(HS_cat))
+na_per <- data.frame(na_per)
+
+na_per %>% 
+  filter(na_per > 0.5) %>% 
+  kbl(caption = "Categorical values with more than 50% of entries are NAs") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS_cat <- HS_cat %>% 
+  select(-c("Alley", "PoolQC", "Fence", "MiscFeature"))
+```
+
+
+For other columns, all of the missing values are turned into "Unknown".
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS_cat[is.na(HS_cat)] <- 'Unknown'
+```
+
+
+### `SalePrice` & `Neighborhood`
+
+The boxplot shows that there is wide variation in the distribution of SalePrices across the neighborhoods.  NridgHt, NoRidge, and StoneBr have the largest mean SalePrices. Interesting 6 of the 7 most expensive homes are located in NridgHt and NoRidge.  MeadowV, IDOTRR, Brkside, and BrDale have the lowest mean SalePrice.  
+
+Finally, table 13 shows the correlation for each neighborhood with SalePrice. As the boxplot showed, NridgHt, NoRidge, StoneBr, Somerst and Timber have the strongest positive correlation with SalePrice at .40, .33, .22, .14 and .13 respectively. In contrast, BrDale, MeadowV, Sawyer, BrkSide, IDOTRR, Edwards, NAmes, and OldTown are all noticeably negatively correlated with SalePrice.  
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_Neighborhood <- HS %>% 
+  select(SalePrice, Neighborhood)
+
+ggplot(SalePrice_Neighborhood, aes(SalePrice, Neighborhood)) + 
+  geom_boxplot() +
+  labs(title = "SalePrice & Neighborhood")
+
+HS_Neighborhood_dummys <- dummy_cols(SalePrice_Neighborhood, "Neighborhood")
+
+cor_matrix <- cor(HS_Neighborhood_dummys[,c(1,3:27)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table13: Neighborhood Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+
+### `SalePrice` & `MSZoning`
+
+MSZoning represents the general zoning classification of each house in the dataset. According to the boxplot, FV and Rl have the largest mean SalePrices. Interestingly, 8 most expensive homes have MSZoning of RL. Finally, table 14 shows the correlation for each MSZoning with SalePrice. As the boxplot showed, MSZoning_RL and MSZoning_FV have the strongest positive correlation with SalePrice at .25 and .09 respectively. In contrast, MSZoning_C (all) and MSZoning_RM are noticeably negatively correlated with SalePrice.  
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS_cat$SalePrice <- HS$SalePrice
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_MSZoning <- HS_cat %>% 
+  select(SalePrice, MSZoning)
+
+ggplot(SalePrice_MSZoning, aes(SalePrice, MSZoning)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & MSZoning")
+
+HS_MSZoning_dummys <- dummy_cols(SalePrice_MSZoning, "MSZoning")
+
+cor_matrix <- cor(HS_MSZoning_dummys[,c(1,3:7)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table14: MSZoning Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+
+### `SalePrice` & `MSSubClass`
+
+According to the boxplot, MSSubClass_60 has the largest mean SalePrices. Interestingly, 2 most expensive homes have MSSubClass of 60.  
+
+Finally, table 15 shows the correlation for each MSSubClass with SalePrice. As the boxplot showed, MSSubClass_60 has the strongest positive correlation with SalePrice at 0.38. In contrast, MSSubClass_190, MSSubClass_90, MSSubClass_160, MSSubClass_50 and MSSubClass_30 are noticeably negatively correlated with SalePrice. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_MSSubClass <- HS_cat %>% 
+  select(SalePrice, MSSubClass)
+
+ggplot(SalePrice_MSSubClass, aes(SalePrice, MSSubClass)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & MSSubClass")
+
+HS_MSSubClass_dummys <- dummy_cols(SalePrice_MSSubClass, "MSSubClass")
+
+cor_matrix <- cor(HS_MSSubClass_dummys[,c(1,3:17)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table15: MSSubClass Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+
+### `SalePrice` & `Fireplaces`
+
+Fireplaces represents the number of fireplaces of each house in the dataset. According to the boxplot, Fireplaces_3 has the largest mean SalePrices. Interestingly, 2 most expensive homes have the number of fireplaces of 2.  
+
+Finally, table 16 shows the correlation for each Fireplaces with SalePrice. Fireplaces_1 and Fireplaces_3 have the strongest positive correlation with SalePrice at 0.35 and 0.22 respectively. In contrast, Fireplaces_0 is noticeably negatively correlated with SalePrice at -0.47. 
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_Fireplaces <- HS_cat %>% 
+  select(SalePrice, Fireplaces)
+
+ggplot(SalePrice_Fireplaces, aes(SalePrice, Fireplaces)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & Fireplaces")
+
+HS_Fireplaces_dummys <- dummy_cols(SalePrice_Fireplaces, "Fireplaces")
+
+cor_matrix <- cor(HS_Fireplaces_dummys[,c(1,3:6)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table16: Fireplaces Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+
+### `SalePrice` & `TotalFullBath`
+
+According to the correlation table, TotalFullBath_3 and TotalFullBath_4 have the strongest positive correlation with SalePrice at 0.49 and 0.19 respectively. In contrast, TotalFullBath_1 is noticeably negatively correlated with SalePrice at -0.42.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_TotalFullBath <- HS_cat %>% 
+  select(SalePrice, TotalFullBath)
+
+ggplot(SalePrice_TotalFullBath, aes(SalePrice, TotalFullBath)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & TotalFullBath")
+
+HS_TotalFullBath_dummys <- dummy_cols(SalePrice_TotalFullBath, "TotalFullBath")
+
+cor_matrix <- cor(HS_TotalFullBath_dummys[,c(1,3:8)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table17: TotalFullBath Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+
+### `SalePrice` & `GarageCars`
+
+GarageCars represents the size of garage in car capacity of each house in the dataset. According to the correlation table, GarageCars_3 has the strongest positive correlation with SalePrice at 0.61. In contrast, GarageCars_0 and GarageCars_1 are noticeably negatively correlated with SalePrice at -0.24 and -0.39 respectively.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_GarageCars <- HS_cat %>% 
+  select(SalePrice, GarageCars)
+
+ggplot(SalePrice_GarageCars, aes(SalePrice, GarageCars)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & GarageCars")
+
+HS_GarageCars_dummys <- dummy_cols(SalePrice_GarageCars, "GarageCars")
+
+cor_matrix <- cor(HS_GarageCars_dummys[,c(1,3:7)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table18: GarageCars Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+
+### `SalePrice` & `OverallCond`
+
+OverallCond represents the overall condition rating of each house in the dataset. According to the correlation table, OverallCond_5 has the strongest positive correlation with SalePrice at 0.32. In contrast, OverallCond_7, OverallCond_3, OverallCond_4 and OverallCond_6 are noticeably negatively correlated with SalePrice at -0.12, -0.13, -0.15 and -0.16 respectively.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_OverallCond <- HS_numeric[, c("SalePrice", "OverallCond")]
+SalePrice_OverallCond$OverallCond <- as.factor(SalePrice_OverallCond$OverallCond)
+
+ggplot(SalePrice_OverallCond, aes(SalePrice, OverallCond)) + 
+  geom_boxplot() +
+  labs(title = "SalePrice & OverallCond")
+
+HS_OverallCond_dummys <- dummy_cols(SalePrice_OverallCond, "OverallCond")
+
+cor_matrix <- cor(HS_OverallCond_dummys[,c(1,3:11)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table19: OverallCond Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+
+### `SalePrice` & `LotShape`
+
+LotShape represents the general shape of property of each house in the dataset. According to the correlation table, LotShape_IR1 and LotShape_IR2 have the strongest positive correlation with SalePrice at 0.22 and 0.13 respectively. In contrast, LotShape_Reg	is noticeably negatively correlated with SalePrice at -0.24 and -0.27.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_LotShape <- HS_cat %>% 
+  select(SalePrice, LotShape)
+
+ggplot(SalePrice_LotShape, aes(SalePrice, LotShape)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & LotShape")
+
+HS_LotShape_dummys <- dummy_cols(SalePrice_LotShape, "LotShape")
+
+cor_matrix <- cor(HS_LotShape_dummys[,c(1,3:6)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table20: LotShape Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+
+### `SalePrice` & `RoofStyle`
+
+RoofStyle represents the type of roof of each house in the dataset. According to the correlation table, RoofStyle_Hip has the strongest positive correlation with SalePrice at 0.24. In contrast, RoofStyle_Gable	is noticeably negatively correlated with SalePrice at -0.22.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_RoofStyle <- HS_cat %>% 
+  select(SalePrice, RoofStyle)
+
+ggplot(SalePrice_RoofStyle, aes(SalePrice, RoofStyle)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & RoofStyle")
+
+HS_RoofStyle_dummys <- dummy_cols(SalePrice_RoofStyle, "RoofStyle")
+
+cor_matrix <- cor(HS_RoofStyle_dummys[,c(1,3:8)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table21: RoofStyle Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+### `SalePrice` & `ExterQual`
+
+ExterQual represents the exterior material quality of each house in the dataset. According to the correlation table, ExterQual_Ex and ExterQual_Gd have the strongest positive correlation with SalePrice at 0.45. In contrast, ExterQual_Fa and ExterQual_TA are noticeably negatively correlated with SalePrice at -0.12 and -0.59 respectively.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_ExterQual <- HS_cat %>% 
+  select(SalePrice, ExterQual)
+
+ggplot(SalePrice_ExterQual, aes(SalePrice, ExterQual)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & ExterQual")
+
+HS_ExterQual_dummys <- dummy_cols(SalePrice_ExterQual, "ExterQual")
+
+cor_matrix <- cor(HS_ExterQual_dummys[,c(1,3:6)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table22: ExterQual Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+
+### `SalePrice` & `Foundation`
+
+Foundation represents the type of foundation of each house in the dataset. According to the correlation table, Foundation_PConc has the strongest positive correlation with SalePrice at 0.5. In contrast, Foundation_Slab, Foundation_BrkTil and Foundation_CBlock are noticeably negatively correlated with SalePrice at -0.12, -0.2 and -0.34 respectively.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_Foundation <- HS_cat %>% 
+  select(SalePrice, Foundation)
+
+ggplot(SalePrice_Foundation, aes(SalePrice, Foundation)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & Foundation")
+
+HS_Foundation_dummys <- dummy_cols(SalePrice_Foundation, "Foundation")
+
+cor_matrix <- cor(HS_Foundation_dummys[,c(1,3:8)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table23: Foundation Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+
+### `SalePrice` & `HeatingQC`
+
+HeatingQC variable represents the heating quality and condition of each house in the dataset. According to the correlation table, HeatingQC_Ex has the strongest positive correlation with SalePrice at 0.43. In contrast, HeatingQC_Fa, HeatingQC_Gd and HeatingQC_TA are noticeably negatively correlated with SalePrice at -0.13, -0.13 and -0.31 respectively.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_HeatingQC <- HS_cat %>% 
+  select(SalePrice, HeatingQC)
+
+ggplot(SalePrice_HeatingQC, aes(SalePrice, HeatingQC)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & HeatingQC")
+
+HS_HeatingQC_dummys <- dummy_cols(SalePrice_HeatingQC, "HeatingQC")
+
+cor_matrix <- cor(HS_HeatingQC_dummys[,c(1,3:7)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table24: HeatingQC Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+### `SalePrice` & `SaleType`
+
+SaleType represents the type of sale of each house in the dataset. According to the correlation table, SaleType_New has the strongest positive correlation with SalePrice at 0.36. In contrast, SaleType_WD is noticeably negatively correlated with SalePrice at -0.24.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_SaleType <- HS_cat %>% 
+  select(SalePrice, SaleType)
+
+ggplot(SalePrice_SaleType, aes(SalePrice, SaleType)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & SaleType")
+
+HS_SaleType_dummys <- dummy_cols(SalePrice_SaleType, "SaleType")
+
+cor_matrix <- cor(HS_SaleType_dummys[,c(1,3:11)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table25: SaleType Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+### `SalePrice` & `SaleCondition`
+
+SaleCondition represents the condition of sale of each house in the dataset. According to the correlation table, SaleCondition_Partial has the strongest positive correlation with SalePrice at 0.35. In contrast, SaleCondition_Abnorml and SaleCondition_Normal are noticeably negatively correlated with SalePrice at -0.12 and -0.15 respectively.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_SaleCondition <- HS_cat %>% 
+  select(SalePrice, SaleCondition)
+
+ggplot(SalePrice_SaleCondition, aes(SalePrice, SaleCondition)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & SaleCondition")
+
+HS_SaleCondition_dummys <- dummy_cols(SalePrice_SaleCondition, "SaleCondition")
+
+cor_matrix <- cor(HS_SaleCondition_dummys[,c(1,3:8)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table26: SaleCondition Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+
+
+### `SalePrice` & `HouseStyle`
+
+According to the correlation table, HouseStyle_2Story has the strongest positive correlation with SalePrice at 0.24. In contrast, HouseStyle_1.5Unf, HouseStyle_SFoyer and HouseStyle_1.5Fin are noticeably negatively correlated with SalePrice at -0.09, -0.09 and -0.16 respectively.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_HouseStyle <- HS_cat %>% 
+  select(SalePrice, HouseStyle)
+
+ggplot(SalePrice_HouseStyle, aes(SalePrice, HouseStyle)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & HouseStyle")
+
+HS_HouseStyle_dummys <- dummy_cols(SalePrice_HouseStyle, "HouseStyle")
+
+cor_matrix <- cor(HS_HouseStyle_dummys[,c(1,3:10)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table27: HouseStyle Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+### `SalePrice` & `MasVnrType`
+
+According to the correlation table, MasVnrType_Stone and MasVnrType_BrkFace have the strongest positive correlation with SalePrice at 0.33 and 0.2. In contrast, MasVnrType_None is noticeably negatively correlated with SalePrice at -0.37.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_MasVnrType <- HS_cat %>% 
+  select(SalePrice, MasVnrType)
+
+ggplot(SalePrice_MasVnrType, aes(SalePrice, MasVnrType)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & MasVnrType")
+
+HS_MasVnrType_dummys <- dummy_cols(SalePrice_MasVnrType, "MasVnrType")
+
+cor_matrix <- cor(HS_MasVnrType_dummys[,c(1,3:7)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table28: MasVnrType Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+### `SalePrice` & `LotConfig`
+
+According to the correlation table, LotConfig_CulDSac has the strongest correlation with SalePrice at 0.14.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_LotConfig <- HS_cat %>% 
+  select(SalePrice, LotConfig)
+
+ggplot(SalePrice_LotConfig, aes(SalePrice, LotConfig)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & LotConfig")
+
+HS_LotConfig_dummys <- dummy_cols(SalePrice_LotConfig, "LotConfig")
+
+cor_matrix <- cor(HS_LotConfig_dummys[,c(1,3:7)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table29: LotConfig Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+### `SalePrice` & `Exterior1st`
+
+According to the correlation table, Exterior1st_VinylSd and Exterior1st_CemntBd have the strongest positive correlation with SalePrice at 0.31 and 0.13. In contrast, Exterior1st_HdBoard, Exterior1st_AsbShng, Exterior1st_Wd Sdng and Exterior1st_MetalSd are noticeably negatively correlated with SalePrice at -0.10, -0.11, -0.16 and -0.17 respectively.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_Exterior1st <- HS_cat %>% 
+  select(SalePrice, Exterior1st)
+
+ggplot(SalePrice_Exterior1st, aes(SalePrice, Exterior1st)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & Exterior1st")
+
+HS_Exterior1st_dummys <- dummy_cols(SalePrice_Exterior1st, "Exterior1st")
+
+cor_matrix <- cor(HS_Exterior1st_dummys[,c(1,3:17)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table30: Exterior1st Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+### `SalePrice` & `BedroomAbvGr`
+
+BedroomAbvGr represents the number of bedrooms above basement level of each house in the dataset. According to the correlation table, BedroomAbvGr_4 has the strongest positive correlation with SalePrice at 0.21. In contrast, BedroomAbvGr_2 is noticeably negatively correlated with SalePrice at -0.16.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_BedroomAbvGr <- HS_cat %>% 
+  select(SalePrice, BedroomAbvGr)
+
+ggplot(SalePrice_BedroomAbvGr, aes(SalePrice, BedroomAbvGr)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & BedroomAbvGr")
+
+HS_BedroomAbvGr_dummys <- dummy_cols(SalePrice_BedroomAbvGr, "BedroomAbvGr")
+
+cor_matrix <- cor(HS_BedroomAbvGr_dummys[,c(1,3:10)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table31: BedroomAbvGr Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+### `SalePrice` & `TotRmsAbvGrd`
+
+According to the correlation table, TotRmsAbvGrd_10, TotRmsAbvGrd_9, TotRmsAbvGrd_11, TotRmsAbvGrd_8, TotRmsAbvGrd_7 and TotRmsAbvGrd_12 have the strongest positive correlation with SalePrice at 0.26, 0.21, 0.19, 0.16, 0.11 and 0.11 respectively. In contrast, TotRmsAbvGrd_3, TotRmsAbvGrd_6, TotRmsAbvGrd_4 and TotRmsAbvGrd_5 are noticeably negatively correlated with SalePrice at -0.10, -0.15, -0.2 and -0.24 respectively.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_TotRmsAbvGrd <- HS_cat %>% 
+  select(SalePrice, TotRmsAbvGrd)
+
+ggplot(SalePrice_TotRmsAbvGrd, aes(SalePrice, TotRmsAbvGrd)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & TotRmsAbvGrd")
+
+HS_TotRmsAbvGrd_dummys <- dummy_cols(SalePrice_TotRmsAbvGrd, "TotRmsAbvGrd")
+
+cor_matrix <- cor(HS_TotRmsAbvGrd_dummys[,c(1,3:14)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table32: TotRmsAbvGrd Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+### `SalePrice` & `BldgType`
+
+According to the correlation table, 1Fam, 2fmCon, Twnhs, and Duplex have the strongest correlation with SalePrice at 0.14, -0.10, -0.10 and -0.11 respectively. In contrast, TwnhsE does not have any noticeable correlation with SalePrice.
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+SalePrice_BldgType <- HS_cat %>% 
+  select(SalePrice, BldgType)
+
+ggplot(SalePrice_BldgType, aes(SalePrice, BldgType)) +
+  geom_boxplot() +
+  labs(title = "SalePrice & BldgType")
+
+HS_BldgType_dummys <- dummy_cols(SalePrice_BldgType, "BldgType")
+
+cor_matrix <- cor(HS_BldgType_dummys[,c(1,3:7)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table33: BldgType Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+# Data Cleaning
+
+In this section, data cleaning will be conducted to:
+
+- Work on outliers in some numeric variables that may be overly influential in the final SalePrice prediction model by either removing them or replacing them with another values.
+- Work on missing values:
+  - Replace them with another suitable value for numeric variables.
+  - Replace them with "Unknown" for categorical variables.
+  
+- Group the non-meaningful levels in different categorical variables (levels with correlation with SalePrice below 0.09) in to one level called "Other".
+
+## `MasVnrArea`
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean <- round(mean(HS$MasVnrArea),0)
+min <- round(min(HS$MasVnrArea),0)
+max <- round(max(HS$MasVnrArea),0)
+median <- round(median(HS$MasVnrArea),0)
+sd <- round(sd(HS$MasVnrArea))
+
+na_count <- nrow(HS[is.na(HS$MasVnrArea),])
+```
+
+
+MasVnrArea contained `r na_count` missing values. Therefore, these missing values should be updated. One possible solution is to replace them with the mean MasVnrArea based on the specific house style. 
+
+```{r, include=FALSE, message = FALSE, warning = FALSE}
+HS %>% 
+  group_by(HouseStyle) %>% 
+  select(MasVnrArea) %>% 
+  summarise(mean = mean(MasVnrArea, na.rm = TRUE)) %>% 
+  kbl(caption = "Mean MasVnrArea based on the specific house style") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+HS$MasVnrArea_cleaned <- HS$MasVnrArea
+HS[is.na(HS$MasVnrArea) & HS$HouseStyle == "1.5Fin", "MasVnrArea_cleaned"] <- 32.18
+HS[is.na(HS$MasVnrArea) & HS$HouseStyle == "1.5Unf" | HS$HouseStyle == "2.5Fin" | HS$HouseStyle == "2.5Unf", "MasVnrArea_cleaned"] <- 0
+HS[is.na(HS$MasVnrArea) & HS$HouseStyle == "1Story", "MasVnrArea_cleaned"] <- 94.63
+HS[is.na(HS$MasVnrArea) & HS$HouseStyle == "2Story", "MasVnrArea_cleaned"] <- 150.4
+HS[is.na(HS$MasVnrArea) & HS$HouseStyle == "SFoyer", "MasVnrArea_cleaned"] <- 65.24
+HS[is.na(HS$MasVnrArea) & HS$HouseStyle == "SLvl", "MasVnrArea_cleaned"] <- 130.48
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+cor_MasVnrArea <- cor(HS$SalePrice, HS$MasVnrArea_cleaned)
+```
+
+After cleaning, the correlation between SalePrice and MasvnrArea is around 0.48.
+
+```{r, include=FALSE}
+ggplot(HS, aes(MasVnrArea_cleaned))+
+  geom_density()
+```
+
+
+## `OverallQual`
+
+Based on the bivariate analysis between SalePrice and OverallQual, two outliers are noticeable: Two houses that have OverallQual around 10, were sold for less than $200,000. These two points can either be removed or replaced by other values. To keep most of the data available, I will replace them with the average OverallQual values in their Neighborhood.
+
+```{r, include=FALSE}
+HS %>% 
+  filter(OverallQual==10 & SalePrice<200000)
+```
+
+```{r, echo=FALSE, message = FALSE, warning = FALSE}
+mean_Edwards <- round(mean(HS[HS$Neighborhood == "Edwards" & !(HS$OverallQual==10 & HS$SalePrice<200000), "OverallQual"]))
+HS$OverallQual_cleaned <- HS$OverallQual
+HS[HS$OverallQual_cleaned==10 & HS$SalePrice<200000, "OverallQual_cleaned"] <- mean_Edwards
+```
+
+
+After replacing the two outliers, the correlation between SalePrice and OverallQual increases slightly (from 0.791 to 0.796)
+```{r, include=FALSE,message = FALSE, warning = FALSE}
+cor(HS$SalePrice, HS$OverallQual)
+cor(HS$SalePrice, HS$OverallQual_cleaned)
+```
+
+## `GrLivArea`
+
+Based on the bivariate analysis between SalePrice and GrLivArea, two outliers are noticeable: Two houses that are both greater than 4500 square feet, were sold for less than $200,000. These values will be replaced by the average GrLivArea values of their HouseStyle.
+
+```{r, message = FALSE, warning = FALSE, include=FALSE}
+HS %>%
+  filter((GrLivArea > 4500 & SalePrice < 200000))
+```
+
+```{r, include = FALSE}
+mean_2Story <- round(mean(HS[HS$HouseStyle == "2Story" & !(HS$GrLivArea>4500 & HS$SalePrice<200000), "GrLivArea"]))
+HS$GrLivArea_cleaned <- HS$GrLivArea
+HS[HS$GrLivArea_cleaned>4500 & HS$SalePrice<200000, "GrLivArea_cleaned"] <- mean_2Story
+HS$GrLivArea_cleaned_transformed <- log(HS$GrLivArea_cleaned)
+```
+
+```{r, include=FALSE}
+cor(HS$SalePrice, HS$GrLivArea)
+cor(HS$SalePrice, HS$GrLivArea_transformed)
+cor(HS$SalePrice, HS$GrLivArea_cleaned)
+cor(HS$SalePrice, HS$GrLivArea_cleaned_transformed)
+```
+
+After replacing the two outliers, the correlation between SalePrice and GrLivArea increases slightly (from 0.709 to 0.736)
+
+## `LotArea`
+
+Based on the bivariate analysis between SalePrice and LotArea, three outliers are noticeable: Three houses that have lot area greater than 150,000 square feet, were sold for less than $400,000.
+
+```{r, message = FALSE, warning = FALSE, include=FALSE}
+HS %>%
+  filter(LotArea>150000 & SalePrice<400000)
+```
+
+These three outliers will be replaced by the average LotArea based on their HouseStyle.
+```{r, include=FALSE}
+mean_1.5Fin <- round(mean(HS[HS$HouseStyle == "1.5Fin" & !(HS$LotArea>150000 & HS$SalePrice<400000), "LotArea"]))
+mean_1Story <- round(mean(HS[HS$HouseStyle == "1Story" & !(HS$LotArea>150000 & HS$SalePrice<400000), "LotArea"]))
+HS$LotArea_cleaned <- HS$LotArea
+HS[HS$HouseStyle == "1.5Fin" & HS$LotArea>150000 & HS$SalePrice<400000, "LotArea_cleaned"] <- mean_1.5Fin
+HS[HS$HouseStyle == "1Story" & HS$LotArea>150000 & HS$SalePrice<400000, "LotArea_cleaned"] <- mean_1Story
+HS$LotArea_cleaned_transformed <- log10(HS$LotArea_cleaned)
+```
+
+```{r, include=FALSE}
+cor(HS$SalePrice, HS$LotArea)
+cor(HS$SalePrice, HS$LotArea_transformed)
+cor(HS$SalePrice, HS$LotArea_cleaned)
+cor(HS$SalePrice, HS$LotArea_cleaned_transformed)
+```
+
+After replacing the two outliers, the correlation between SalePrice and LotArea increases noticeably (from 0.26 to 0.39)
+
+## `AgeSold`
+
+Based on the bivariate analysis between SalePrice and AgeSold, one outlier is noticeable: One house that was built 110 years ago was sold for nearly $500,000. This outlier will be replaced by the average AgeSold of the house neighborhood.
+
+```{r, message = FALSE, warning = FALSE, include=FALSE}
+HS %>%
+  filter(AgeSold>110 & SalePrice>450000)
+```
+
+```{r, include=FALSE}
+mean_OldTown <- round(mean(HS[HS$Neighborhood == "OldTown" & !(HS$AgeSold>110 & HS$SalePrice>450000), "AgeSold"]))
+HS$AgeSold_cleaned <- HS$AgeSold
+HS[HS$Neighborhood == "OldTown" & HS$AgeSold>110 & HS$SalePrice>450000, "AgeSold_cleaned"] <- mean_OldTown
+HS$AgeSold_cleaned_transformed <- sqrt(HS$AgeSold_cleaned)
+```
+
+```{r, include=FALSE}
+cor(HS$SalePrice, HS$AgeSold)
+cor(HS$SalePrice, HS$AgeSold_transformed)
+cor(HS$SalePrice, HS$AgeSold_cleaned)
+cor(HS$SalePrice, HS$AgeSold_cleaned_transformed)
+```
+
+After replacing the two outliers, the correlation between SalePrice and LotArea decreases slightly (from -0.52 to -0.57).
+
+## `WoodDeckSF`
+
+Based on the bivariate analysis between SalePrice and WoodDeckSF, two outliers are noticeable: Two house with nearly 750 square feet of wood deck were sold for under $200,000. These outliers will be replaced by the average WoodDeckSF of the house styles.
+
+```{r, message = FALSE, warning = FALSE, include=FALSE}
+HS %>%
+  filter(WoodDeckSF>700 & SalePrice<200000)
+```
+
+```{r, include=FALSE}
+mean_2Story <- round(mean(HS[HS$HouseStyle == "2Story" & !(HS$WoodDeckSF>700 & HS$SalePrice<200000), "WoodDeckSF"]))
+mean_1Story <- round(mean(HS[HS$HouseStyle == "1Story" & !(HS$WoodDeckSF>700 & HS$SalePrice<200000), "WoodDeckSF"]))
+HS$WoodDeckSF_cleaned <- HS$WoodDeckSF
+HS[HS$HouseStyle == "2Story" & HS$WoodDeckSF>700 & HS$SalePrice<200000, "WoodDeckSF_cleaned"] <- mean_2Story
+HS[HS$HouseStyle == "1Story" & HS$WoodDeckSF>700 & HS$SalePrice<200000, "WoodDeckSF_cleaned"] <- mean_1Story
+```
+
+```{r, include=FALSE}
+cor(HS$SalePrice, HS$WoodDeckSF)
+cor(HS$SalePrice, HS$WoodDeckSF_cleaned)
+```
+
+After replacing the two outliers, the correlation between SalePrice and WoodDeckSF increases slightly (from 0.32 to 0.33).
+
+## `Neighborhood`
+
+There are 25 different Neighborhoods in the dataset, but only 13 have a meaningful relationship with SalePrice, including NridgHt, NoRidge, StoneBr, Somerst, Timber, BrDale, MeadowV, Sawyer, BrkSide, IDOTRR, Edwards, NAmes, and OldTown. Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+unique(HS$Neighborhood)
+```
+
+
+```{r, include=FALSE}
+HS[!(HS$Neighborhood %in% c("NridgHt", "NoRidge", "StoneBr", "Somerst", "Timber", "BrDale", "MeadowV", "Sawyer", "BrkSide", "IDOTRR", "Edwards", "NAmes", "OldTown")), "Neighborhood"] <- "Other"
+unique(HS$Neighborhood)
+HS$Neighborhood <- factor(HS$Neighborhood, levels = c("Other","NoRidge", "Somerst", "OldTown", "BrkSide", "Sawyer", "NridgHt", "NAmes", "IDOTRR", "MeadowV", "Edwards", "Timber", "StoneBr", "BrDale"))
+```
+
+
+## `MSSubClass`
+
+There are 15 different MSSubClass in the dataset, but only 6 have a meaningful relationship with SalePrice, including "60","190","90","160","50" and "30". Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+length(unique(HS$MSSubClass))
+class(HS$MSSubClass)
+```
+
+
+```{r, include=FALSE}
+levels(HS$MSSubClass) <- c(levels(HS$MSSubClass), "Other")
+HS[!(HS$MSSubClass %in% c("60","190","90","160","50","30")), "MSSubClass"] <- "Other"
+unique(HS$MSSubClass)
+HS$MSSubClass <- factor(HS$MSSubClass, levels = c("Other","60","50","190","90","30","160"))
+```
+
+## `TotalFullBath` 
+
+There are 6 TotalFullBath values, but only 3 have a meaningful relationship with SalePrice, including "1", "3", "4". Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+length(unique(HS$TotalFullBath))
+class(HS$TotalFullBath)
+```
+
+```{r, include=FALSE}
+levels(HS$TotalFullBath) <- c(levels(HS$TotalFullBath), "Other")
+HS[!(HS$TotalFullBath %in% c("1", "3", "4")), "TotalFullBath"] <- "Other"
+unique(HS$TotalFullBath)
+HS$TotalFullBath <- factor(HS$TotalFullBath, levels = c("Other", "1", "3", "4"))
+```
+
+
+## `OverallCond` 
+
+There are 10 TotalFullBath values, but only 5 have a meaningful relationship with SalePrice, including "3", "4", "5", "6" and "7". Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+length(unique(HouseSales$OverallCond))
+class(HouseSales$OverallCond)
+HS$OverallCond <- factor(HouseSales$OverallCond)
+```
+
+```{r, include=FALSE}
+levels(HS$OverallCond) <- c(levels(HS$OverallCond), "Other")
+HS[!(HS$OverallCond %in% c("3", "4", "5", "6", "7")), "OverallCond"] <- "Other"
+unique(HS$OverallCond)
+HS$OverallCond <- factor(HS$OverallCond, levels = c("Other", "3", "4", "5", "6", "7"))
+```
+
+## `SaleType` 
+
+There are 9 TotalFullBath values, but only 2 have a meaningful relationship with SalePrice, including "New" and "WD". Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+HS$SaleType <- HS_cat$SaleType
+length(unique(HS$SaleType))
+class(HS$SaleType)
+# HS$SaleType <- factor(HS$SaleType)
+```
+
+```{r, include=FALSE}
+HS$SaleType <- factor(HS$SaleType, levels = c("Other", "WD", "New", "COD", "ConLD", "ConLI", "CWD", "ConLw", "Con", "Oth"))
+HS[!(HS$SaleType %in% c("New", "WD")), "SaleType"] <- "Other"
+unique(HS$SaleType)
+HS$SaleType <- factor(HS$SaleType, levels = c("Other", "New", "WD"))
+```
+
+```{r, include=FALSE}
+unique(HouseSales$SaleType)
+```
+
+
+## `Fireplaces` 
+
+Among 4 numbers of Fireplaces, one, three and zero fireplaces have a meaningful relationship with SalePrice. Two fireplaces will be turned into the "Other" level.
+
+```{r, include=FALSE}
+HS$Fireplaces <- HS_cat$Fireplaces
+HS$Fireplaces <- factor(HS$Fireplaces, levels = c("Other", "0", "1", "2", "3"))
+HS[HS$Fireplaces == "2", "Fireplaces"] <- "Other"
+HS$Fireplaces <- factor(HS$Fireplaces, levels = c("Other", "0", "1", "3"))
+```
+
+
+## `GarageCars`
+
+There are 5 GarageCars values, but only 3 have a meaningful relationship with SalePrice, including "0", "1", "3". Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+HS$GarageCars <- HS_cat$GarageCars
+length(unique(HS$GarageCars))
+class(HS$GarageCars)
+# HS$SaleType <- factor(HS$SaleType)
+```
+
+```{r, include=FALSE}
+levels(HS$GarageCars) <- c(levels(HS$GarageCars), "Other")
+HS[!(HS$GarageCars %in% c("0", "1", "3")), "GarageCars"] <- "Other"
+unique(HS$GarageCars)
+HS$GarageCars <- factor(HS$GarageCars, levels = c("Other", "0", "1", "3"))
+```
+
+## `LotShape` 
+
+Among 4 numbers of Fireplaces, IR1, IR2 and Reg have a meaningful relationship with SalePrice. IR3 will be turned into the "Other" level.
+
+```{r, include=FALSE}
+HS$LotShape <- HS_cat$LotShape
+HS$LotShape <- factor(HS$LotShape, levels = c("Other", "IR1", "IR2", "IR3","Reg"))
+HS[HS$LotShape == "IR3", "LotShape"] <- "Other"
+HS$LotShape <- factor(HS$LotShape, levels = c("Other", "IR1", "IR2", "Reg"))
+```
+
+
+## `RoofStyle`
+
+There are 6 RoofStyle values, but only 2 have a meaningful relationship with SalePrice, including "Hip" and "Gable". Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+HS$RoofStyle <- HS_cat$RoofStyle
+length(unique(HS$RoofStyle))
+class(HS$RoofStyle)
+HS$RoofStyle <- factor(HS$RoofStyle)
+```
+
+```{r, include=FALSE}
+levels(HS$RoofStyle) <- c(levels(HS$RoofStyle), "Other")
+HS[!(HS$RoofStyle %in% c("Hip", "Gable")), "RoofStyle"] <- "Other"
+unique(HS$RoofStyle)
+HS$RoofStyle <- factor(HS$RoofStyle, levels = c("Other", "Hip", "Gable"))
+```
+
+## `Foundation`
+
+There are 6 RoofStyle values, but only 4 have a meaningful relationship with SalePrice, including "PConc", "Slab", "BrkTil", "CBlock". Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+HS$Foundation <- HS_cat$Foundation
+length(unique(HS$Foundation))
+class(HS$Foundation)
+HS$Foundation <- factor(HS$Foundation)
+```
+
+```{r, include=FALSE}
+levels(HS$Foundation) <- c(levels(HS$Foundation), "Other")
+HS[!(HS$Foundation %in% c("PConc", "Slab", "BrkTil", "CBlock")), "Foundation"] <- "Other"
+unique(HS$Foundation)
+HS$Foundation <- factor(HS$Foundation, levels = c("Other", "PConc", "Slab", "BrkTil", "CBlock"))
+```
+
+## `HeatingQC` 
+
+Among 4 numbers of HeatingQC, Ex, Fa, Gd and TA have a meaningful relationship with SalePrice. Po HeatingQC will be turned into the "Other" level.
+
+```{r, include=FALSE}
+HS$HeatingQC <- HS_cat$HeatingQC
+HS$HeatingQC <- factor(HS$HeatingQC, levels = c("Other", "Ex", "Fa", "Gd", "TA", "Po"))
+HS[HS$HeatingQC == "Po", "HeatingQC"] <- "Other"
+HS$HeatingQC <- factor(HS$Fireplaces, levels = c("Other", "Ex", "Fa", "Gd", "TA"))
+```
+
+
+## `SaleCondition`
+
+There are 6 SaleCondition values, but only 3 have a meaningful relationship with SalePrice, including "Partial", "Abnorml", "Normal". Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+HS$SaleCondition <- HS_cat$SaleCondition
+length(unique(HS$SaleCondition))
+class(HS$SaleCondition)
+HS$SaleCondition <- factor(HS$SaleCondition)
+```
+
+```{r, include=FALSE}
+levels(HS$SaleCondition) <- c(levels(HS$SaleCondition), "Other")
+HS[!(HS$SaleCondition %in% c("Partial", "Abnorml", "Normal")), "SaleCondition"] <- "Other"
+unique(HS$SaleCondition)
+HS$SaleCondition <- factor(HS$SaleCondition, levels = c("Other", "Partial", "Abnorml", "Normal"))
+```
+   
+## `HouseStyle`
+
+There are 8 HouseStyle values, but only 4 have a meaningful relationship with SalePrice, including "Partial", "Abnorml", "Normal". Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+HS$HouseStyle <- HS_cat$HouseStyle
+length(unique(HS$HouseStyle))
+class(HS$HouseStyle)
+HS$HouseStyle <- factor(HS$HouseStyle)
+```
+
+```{r, include=FALSE}
+levels(HS$HouseStyle) <- c(levels(HS$HouseStyle), "Other")
+HS[!(HS$HouseStyle %in% c("2Story", "1.5Unf", "SFoyer", "1.5Fin")), "HouseStyle"] <- "Other"
+unique(HS$HouseStyle)
+HS$HouseStyle <- factor(HS$HouseStyle, levels = c("Other", "2Story", "1.5Unf", "SFoyer", "1.5Fin"))
+```
+
+## `MasVnrType`
+
+There are 5 HouseStyle values, but only 3 have a meaningful relationship with SalePrice, including "Stone", "BrkFace", "None". Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+HS$MasVnrType <- HS_cat$MasVnrType
+length(unique(HS$MasVnrType))
+class(HS$MasVnrType)
+HS$MasVnrType <- factor(HS$MasVnrType)
+```
+
+```{r, include=FALSE}
+levels(HS$MasVnrType) <- c(levels(HS$MasVnrType), "Other")
+HS[!(HS$MasVnrType %in% c("Stone", "BrkFace", "None")), "MasVnrType"] <- "Other"
+unique(HS$MasVnrType)
+HS$MasVnrType <- factor(HS$MasVnrType , levels = c("Other", "Stone", "BrkFace", "None"))
+```
+
+## `LotConfig`
+
+There are 5 LotConfig values, but only 1 has a meaningful relationship with SalePrice - "CulDSac". Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+HS$LotConfig <- HS_cat$LotConfig
+length(unique(HS$LotConfig))
+class(HS$LotConfig)
+HS$LotConfig <- factor(HS$LotConfig)
+```
+
+```{r, include=FALSE}
+levels(HS$LotConfig) <- c(levels(HS$LotConfig), "Other")
+HS[!(HS$LotConfig %in% c("CulDSac")), "LotConfig"] <- "Other"
+unique(HS$LotConfig)
+HS$LotConfig <- factor(HS$LotConfig, levels = c("Other", "CulDSac"))
+```
+
+## `Exterior1st`
+
+There are 15 Exterior1st values, but only 1 has a meaningful relationship with SalePrice, including VinylSd, CemntBd, HdBoard, AsbShng, Wd Sdng, MetalSd. Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+HS$Exterior1st <- HS_cat$Exterior1st
+length(unique(HS$Exterior1st))
+class(HS$Exterior1st)
+HS$Exterior1st <- factor(HS$Exterior1st)
+```
+
+```{r, include=FALSE}
+levels(HS$Exterior1st) <- c(levels(HS$Exterior1st), "Other")
+HS[!(HS$Exterior1st %in% c("VinylSd", "CemntBd", "HdBoard", "AsbShng", "Wd Sdng", "MetalSd")), "Exterior1st"] <- "Other"
+unique(HS$Exterior1st)
+HS$Exterior1st <- factor(HS$Exterior1st, levels = c("Other", "VinylSd", "CemntBd", "HdBoard", "AsbShng", "Wd Sdng", "MetalSd"))
+```
+
+## `BedroomAbvGr`
+
+There are 8 BedroomAbvGr values, but only 2 have a meaningful relationship with SalePrice, including "2" and "4". Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+HS$BedroomAbvGr <- HS_cat$BedroomAbvGr
+length(unique(HS$BedroomAbvGr))
+class(HS$BedroomAbvGr)
+HS$BedroomAbvGr <- factor(HS$BedroomAbvGr)
+```
+
+```{r, include=FALSE}
+levels(HS$BedroomAbvGr) <- c(levels(HS$BedroomAbvGr), "Other")
+HS[!(HS$BedroomAbvGr %in% c("2", "4")), "BedroomAbvGr"] <- "Other"
+unique(HS$BedroomAbvGr)
+HS$BedroomAbvGr <- factor(HS$BedroomAbvGr, levels = c("Other", "2", "4"))
+```
+
+## `TotRmsAbvGrd`
+
+There are 12 BedroomAbvGr values, 10 have a meaningful relationship with SalePrice, including 3, 4, 5, 6, 7, 8, 9, 10, 11 and 12. Therefore, the rest will be group into a group called "Other".
+
+```{r, include=FALSE}
+HS$TotRmsAbvGrd <- HS_cat$TotRmsAbvGrd
+length(unique(HS$TotRmsAbvGrd))
+class(HS$TotRmsAbvGrd)
+HS$TotRmsAbvGrd <- factor(HS$TotRmsAbvGrd)
+```
+
+```{r, include=FALSE}
+levels(HS$TotRmsAbvGrd) <- c(levels(HS$TotRmsAbvGrd), "Other")
+HS[!(HS$TotRmsAbvGrd %in% c("3", "4", "5", "6", "7", "8", "9", "10", "11", "12")), "TotRmsAbvGrd"] <- "Other"
+unique(HS$TotRmsAbvGrd)
+HS$TotRmsAbvGrd <- factor(HS$TotRmsAbvGrd, levels = c("Other", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"))
+```
+
+
+## `LotFrontage` 
+
+```{r, include=FALSE}
+na_count <- nrow(HouseSales[is.na(HouseSales$LotFrontage),])
+```
+
+Because `LotFrontage` has `na_count` missing values, these values will be replaced by the mean `LotFrontage` of the specific neighborhood.
+
+```{r, include=FALSE}
+HS$LotFrontage <- HouseSales$LotFrontage
+```
+
+
+```{r, include=FALSE}
+unique(HouseSales$Neighborhood)
+```
+
+```{r, include=FALSE}
+mean_CollgCr <- round(mean(HS[HS$Neighborhood == "CollgCr" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_Veenker <- round(mean(HS[HS$Neighborhood == "Veenker" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_Crawfor <- round(mean(HS[HS$Neighborhood == "Crawfor" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_NoRidge <- round(mean(HS[HS$Neighborhood == "NoRidge" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_Mitchel <- round(mean(HS[HS$Neighborhood == "Mitchel" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_Somerst <- round(mean(HS[HS$Neighborhood == "Somerst" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_NWAmes <- round(mean(HS[HS$Neighborhood == "NWAmes" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_BrkSide <- round(mean(HS[HS$Neighborhood == "BrkSide" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_Sawyer <- round(mean(HS[HS$Neighborhood == "Sawyer" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_NridgHt <- round(mean(HS[HS$Neighborhood == "NridgHt" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_NAmes <- round(mean(HS[HS$Neighborhood == "NAmes" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_SawyerW <- round(mean(HS[HS$Neighborhood == "SawyerW" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_IDOTRR <- round(mean(HS[HS$Neighborhood == "IDOTRR" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_MeadowV <- round(mean(HS[HS$Neighborhood == "MeadowV" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_Edwards <- round(mean(HS[HS$Neighborhood == "Edwards" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_Timber <- round(mean(HS[HS$Neighborhood == "Timber" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_Gilbert <- round(mean(HS[HS$Neighborhood == "Gilbert" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_StoneBr <- round(mean(HS[HS$Neighborhood == "StoneBr" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_ClearCr <- round(mean(HS[HS$Neighborhood == "ClearCr" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_NPkVill <- round(mean(HS[HS$Neighborhood == "NPkVill" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_Blmngtn <- round(mean(HS[HS$Neighborhood == "Blmngtn" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_BrDale <- round(mean(HS[HS$Neighborhood == "BrDale" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_SWISU <- round(mean(HS[HS$Neighborhood == "SWISU" & !is.na(HS$LotFrontage), "LotFrontage"]))
+mean_Blueste <- round(mean(HS[HS$Neighborhood == "Blueste" & !is.na(HS$LotFrontage), "LotFrontage"]))
+```
+
+```{r, include=FALSE}
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "CollgCr", "LotFrontage"] <- mean_CollgCr
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "Veenker", "LotFrontage"] <- mean_Veenker
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "Crawfor", "LotFrontage"] <- mean_Crawfor
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "NoRidge", "LotFrontage"] <- mean_NoRidge
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "Mitchel", "LotFrontage"] <- mean_Mitchel
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "Somerst", "LotFrontage"] <- mean_Somerst
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "NWAmes", "LotFrontage"] <- mean_NWAmes
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "OldTown", "LotFrontage"] <- mean_OldTown
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "BrkSide", "LotFrontage"] <- mean_BrkSide
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "Sawyer", "LotFrontage"] <- mean_Sawyer
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "NridgHt", "LotFrontage"] <- mean_NridgHt
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "NAmes", "LotFrontage"] <- mean_NAmes
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "SawyerW", "LotFrontage"] <- mean_SawyerW
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "IDOTRR", "LotFrontage"] <- mean_IDOTRR
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "MeadowV", "LotFrontage"] <- mean_MeadowV
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "Edwards", "LotFrontage"] <- mean_Edwards
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "Timber", "LotFrontage"] <- mean_Timber
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "Gilbert", "LotFrontage"] <- mean_Gilbert
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "StoneBr", "LotFrontage"] <- mean_StoneBr
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "ClearCr", "LotFrontage"] <- mean_ClearCr
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "NPkVill", "LotFrontage"] <- mean_NPkVill
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "Blmngtn", "LotFrontage"] <- mean_Blmngtn
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "BrDale", "LotFrontage"] <- mean_BrDale
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "SWISU", "LotFrontage"] <- mean_SWISU
+HS[is.na(HS$LotFrontage) & HS$Neighborhood == "Blueste", "LotFrontage"] <- mean_Blueste
+```
+
+## `BldgType` 
+
+There are 5 BldgType values, among which TwnhsE has insignificant correlation with SalePrice. Therefore, this value will be turned into a level called "Other".
+
+```{r, include=FALSE}
+HS$BldgType <- factor(HouseSales$BldgType, levels = c("Other", "1Fam", "2fmCon", "Twnhs", "Duplex", "TwnhsE"))
+HS[HS$BldgType == "TwnhsE", "BldgType"] <- "Other"
+HS$BldgType <- factor(HS$BldgType, levels = c("Other", "1Fam", "2fmCon", "Twnhs", "Duplex"))
+```
+
+
+# Linear Model
+
+```{r, include=FALSE}
+HS$MSZoning <- HS_cat$MSZoning
+HS$Fireplaces <- HS_cat$Fireplaces
+```
+
+```{r, include=FALSE}
+model_data <- HS %>% 
+  select(SalePrice_transformed, OverallQual, GarageArea, GrLivArea, LotArea, AgeSold, WoodDeckSF, BsmtUnfSF, OpenScreenPorch, Neighborhood, MSZoning, MSSubClass, Fireplaces)
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+model_data$TotalFullBath <- HS$TotalFullBath
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+model_data$LotShape <- HS$LotShape
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+unique(HouseSales$ExterQual)
+```
+
+```{r, include=FALSE}
+model_data$ExterQual <- factor(HS_cat$ExterQual, levels = c("Other", "Gd", "TA", "Ex", "Fa"))
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+unique(HS$SaleType)
+```
+
+
+```{r, include=FALSE}
+model_data$SaleType <- HS$SaleType
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, include=FALSE}
+unique(HS$MasVnrType)
+```
+
+
+```{r, include=FALSE}
+model_data$MasVnrType <- HS$MasVnrType
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, include=FALSE}
+unique(HS$LotConfig)
+```
+
+
+```{r, include=FALSE}
+model_data$LotConfig <- HS$LotConfig
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, include=FALSE}
+unique(HS$Exterior1st)
+```
+
+
+```{r, include=FALSE}
+model_data$Exterior1st <- HS$Exterior1st
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+HS$PoolArea <- factor(HS_numeric$PoolArea, levels = c("Other" ,"555", "738", "512", "519", "576", "648", "480", "0"))
+HS[!HS$PoolArea %in% c("555", "0"), "PoolArea"] <- "Other"
+HS$PoolArea <- factor(HS$PoolArea, levels = c("Other" ,"555", "0"))
+```
+
+
+```{r, include=FALSE}
+model_data$PoolArea <- HS$PoolArea
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, include=FALSE}
+HS$CentralAir <- as.factor(HS_cat$CentralAir)
+```
+
+```{r, include=FALSE}
+unique(HS$CentralAir)
+```
+
+
+```{r, include=FALSE}
+model_data$CentralAir <- HS$CentralAir
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, include=FALSE}
+model_data$PavedDrive <- factor(HS_cat$PavedDrive, levels = c("P", "Y", "N"))
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, include=FALSE}
+unique(HS$GarageCars)
+```
+
+```{r, include=FALSE}
+model_data$GarageCars <- HS$GarageCars
+```
+
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+HS$Fence <- HouseSales$Fence
+unique(HS$Fence)
+HS[is.na(HS$Fence), "Fence"] <- "Unknown"
+unique(HS$Fence)
+```
+
+
+```{r, include=FALSE}
+HS_Fence <- HS[, c("SalePrice", "Fence")]
+HS_Fence_dummys <- dummy_cols(HS_Fence, "Fence")
+
+cor_matrix <- cor(HS_Fence_dummys[,c(1,3:7)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table7: Fence Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+
+```{r, include=FALSE}
+HS[HS$Fence %in% c("GdPrv", "MnWw"), "Fence"] <- "Other"
+HS$Fence <- factor(HS$Fence, levels = c("Other", "Unknown", "GdWo", "MnPrv"))
+```
+
+
+```{r, include=FALSE}
+model_data$Fence <- HS$Fence
+```
+
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, include=FALSE}
+unique(HS$HouseStyle)
+```
+
+```{r, include=FALSE}
+model_data$HouseStyle <- HS$HouseStyle
+```
+
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, include=FALSE}
+model_data$LotFrontage <- HS$LotFrontage
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, include=FALSE}
+model_data$BldgType <- HS$BldgType
+```
+
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+model_data[model_data$BldgType == "Duplex", "BldgType"] <- "Other"
+model_data$BldgType <- factor(model_data$BldgType, levels = c("Other", "1Fam", "2fmCon", "Twnhs"))
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, include=FALSE}
+model_data$GarageCars <- HS$GarageCars
+```
+
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, include=FALSE}
+HS$LandContour <- factor(HS_cat$LandContour, levels = c("Other", "HLS", "Bnk", "Low", "Lvl"))
+HS[HS$LandContour %in% c("Low", "Lvl"), "LandContour"] <- "Other"
+HS$LandContour <- factor(HS$LandContour, levels = c("Other", "HLS", "Bnk"))
+```
+
+```{r, include=FALSE}
+model_data$LandContour <- HS$LandContour
+```
+
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, include=FALSE}
+unique(HS_cat$Condition1)
+```
+
+```{r, include=FALSE}
+HS$Condition1 <- factor(HS_cat$Condition1, levels = c("Other", "Norm", "Artery", "Feedr", "PosN", "PosA", "RRAe", "RRNn", "RRNe", "RRAn"))
+HS[HS$Condition1 %in% c("PosN", "PosA", "RRAe", "RRNn", "RRNe", "RRAn"), "Condition1"] <- "Other"
+HS$Condition1 <- factor(HS$Condition1, levels = c("Other", "Norm", "Artery", "Feedr"))
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+model_data[model_data$Neighborhood %in% c("Somerst", "BrkSide", "Sawyer", "NAmes", "IDOTRR", "Timber", "BrDale"), "Neighborhood"] <- "Other"
+droplevels(model_data$Neighborhood)
+
+model_data[model_data$MSSubClass %in% c("50", "190", "90"), "MSSubClass"] <- "Other"
+droplevels(model_data$Neighborhood)
+
+model_data[model_data$TotalFullBath == "4", "TotalFullBath"] <- "Other"
+droplevels(model_data$Neighborhood)
+
+model_data[model_data$LotShape %in% c("IR1", "Reg"), "LotShape"] <- "Other"
+droplevels(model_data$Neighborhood)
+
+model_data[model_data$ExterQual == "Gd", "ExterQual"] <- "Other"
+droplevels(model_data$Neighborhood)
+
+model_data[model_data$SaleType == "WD", "SaleType"] <- "Other"
+droplevels(model_data$Neighborhood)
+
+model_data[model_data$Fence %in% c("Unknown", "MnPrv"), "Fence"] <- "Other"
+droplevels(model_data$Neighborhood)
+
+model_data[model_data$HouseStyle %in% c("2Story", "1.5Unf", "SFoyer"), "HouseStyle"] <- "Other"
+droplevels(model_data$Neighborhood)
+
+model_data[model_data$BldgType %in% c("2fmCon", "Twnhs"), "BldgType"] <- "Other"
+droplevels(model_data$Neighborhood)
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+model_data$TotalBsmtSF <- HS$TotalBsmtSF
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+model_data$RemodSold <- HS$RemodSold
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+HS$BsmtFinSF1_transformed <- (HS$BsmtFinSF1)^(1/3)
+HS[HS$BsmtFinSF1 > 4000 & HS$SalePrice < 200000,]
+mean_Edwards <- round(mean(HS[HS$Neighborhood == "Edwards" & !(HS$BsmtFinSF1 > 4000 & HS$SalePrice < 200000), "BsmtFinSF1"]))
+HS[HS$BsmtFinSF1 > 4000 & HS$SalePrice < 200000, "BsmtFinSF1"] <- mean_Edwards
+HS$BsmtFinSF1_transformed <- (HS$BsmtFinSF1)^(1/3)
+```
+
+```{r, include=FALSE}
+model_data$BsmtFinSF1 <- HS$BsmtFinSF1
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+model_data <- model_data %>% 
+  select(-GrLivArea) %>% 
+  mutate(GrLivArea_transformed = HS$GrLivArea_cleaned_transformed)
+```
+
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, include=FALSE}
+model_data <- model_data %>% 
+  select(-TotalBsmtSF) %>% 
+  mutate(TotalBsmtSF_transformed = HS$TotalBsmtSF_transformed)
+```
+
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+model_data$X1stFlrSF <- HS$X1stFlrSF
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+model_data$X2ndFlrSF_transformed <- HS$X2ndFlrSF_transformed
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+model_data[model_data$Neighborhood == "MeadowV", "Neighborhood"] <- "Other"
+droplevels(model_data$Neighborhood)
+model_data[model_data$Fireplaces == "3", "Fireplaces"] <- "Other"
+droplevels(model_data$Fireplaces)
+model_data[model_data$ExterQual == "Fa", "ExterQual"] <- "Other"
+droplevels(model_data$ExterQual)
+model_data[model_data$Exterior1st %in% c("VinylSd", "CemntBd", "AsbShng", "MetalSd"), "Exterior1st"] <- "Other"
+droplevels(model_data$Exterior1st)
+model_data[model_data$PoolArea == "0", "PoolArea"] <- "Other"
+droplevels(model_data$PoolArea)
+model_data[model_data$GarageCars == "1", "PoolArea"] <- "Other"
+droplevels(model_data$GarageCars)
+model_data[model_data$LandContour == "Bnk", "LandContour"] <- "Other"
+droplevels(model_data$LandContour)
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+```{r, include=FALSE}
+HS$OverallQualFactor <- as.factor(HS$OverallQual)
+HS_OverallQualFactor <- HS %>% select(SalePrice, OverallQualFactor)
+HS_OverallQualFactor_dummys <- dummy_cols(HS_OverallQualFactor, "OverallQualFactor")
+
+cor_matrix <- cor(HS_OverallQualFactor_dummys[,c(1,3:11)])
+cor_matrix <- round(cor_matrix, 2)
+
+get_upper_tri<-function(cor_matrix) {
+  cor_matrix[lower.tri(cor_matrix)] <- NA
+  return(cor_matrix) }
+
+
+lower_tri <- get_upper_tri(cor_matrix)
+melted_cormat <- melt(lower_tri, na.rm = TRUE)
+
+Sales_corr <- melted_cormat %>%
+  filter(Var1 == "SalePrice") %>%
+  filter(Var2 != "SalePrice")
+
+
+Sales_corr <- rename(Sales_corr, DependentVar = Var1, IndependentVar = Var2, Correlation = value)
+
+
+Sales_corr %>%
+  arrange(desc(Correlation)) %>%
+  kbl(caption = "Table7: OverallQualFactor Correlations with SalePrice") %>%
+  kable_classic_2(position = "center") %>%
+  column_spec(1, width = "10em")
+```
+
+```{r, include=FALSE}
+HS$OverallQualFactor <- factor(HS$OverallQualFactor, levels = c("Other", "3", "4", "5", "6", "7", "8", "9", "10", "1", "2"))
+HS[HS$OverallQualFactor %in% c("1", "2"), "OverallQualFactor"] <- "Other"
+droplevels(HS$OverallQualFactor)
+```
+
+```{r, include=FALSE}
+model_data$OverallQualFactor <- HS$OverallQualFactor
+model_data <- model_data %>% select(-OverallQual)
+```
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+```{r, include=FALSE}
+summary(model)
+```
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+```{r, echo=FALSE}
+model_data$RemodSold_transformed <- HS$RemodSold_transformed
+model_data <- model_data %>% select(-RemodSold)
+```
+
+```{r, echo=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+33 variables chosen to be the predictors in SalePrice prediction model include:
+
+* GarageArea 
+* LotArea 
+* AgeSold  
+* WoodDeckSF 
+* BsmtUnfSF
+* OpenScreenPorch
+* Neighborhood
+* MSZoning
+* MSSubClass
+* Fireplaces
+* TotalFullBath
+* LotShape
+* ExterQual
+* SaleType
+* MasVnrType
+* LotConfig
+* Exterior1st
+* PoolArea
+* CentralAir
+* PavedDrive
+* GarageCars
+* Fence
+* HouseStyle
+* LotFrontage
+* BldgType
+* LandContour
+* BsmtFinSF1  
+* GrLivArea_transformed
+* TotalBsmtSF_transformed
+* X1stFlrSF
+* X2ndFlrSF_transformed
+* OverallQualFactor
+* RemodSold_transformed 
+
+
+
+```{r, include=FALSE}
+summary(model)
+```
+
+
+
+```{r, include=FALSE}
+vif(model)
+```
+
+
+
+
+```{r, include=FALSE, warning=FALSE}
+plot(model)
+```
+
+
+```{r, include=FALSE}
+model_data <- model_data[-c(1069), ]
+```
+
+
+```{r, include=FALSE}
+model <- lm(formula = SalePrice_transformed ~ ., data = model_data)
+```
+
+**Multi-variable linear model for `SalePrice_transformed`:**
+
+Running the multi-variate linear model between SalePrice_transformed and the 33 predictors would return a model with an R-squared of 0.9144 and an adjusted R-squared of 0.9105. In other words, the 33 variables included in the model explained approximately 91% of the variance in SalePrice. The model was significatn with F = 231.2, p < 0.001. The median of the residuals was very close to zero. Among 33 predictors, 10 make minimal contribution even though they have significant correlation with SalePrice. This happens because their statistical significance are not as strong as other chosen predictors.
+
+- Note: In experimenting the model, observation in row 1069 was proven to be an outlier that is overinfluential to the model. Removing the observation results in a higher R-squared model.
+
+```{r, echo=FALSE}
+summary(model)
+```
+
+**Variance Inflation Factor of the linear model:**
+
+Variance inflation factor (VIF) is a way to detect multicollinearity within many predictors between a model to see if the model is overstating the prediction. Calculating VIF for every choen predictors in the SalePrice predictiion model, it can be concluded that there is no multicollinearity within the predictors. Because no predictor has a score exceeding 4.1, meanwhile the threshold in this case is 6.0.
+
+```{r, echo=FALSE}
+# vif(model)
+```
+
+The four diagnostic plots demonstrates no concerns with the model:
+
+- The Residual vs Fitted plot plots the model residuals against corresponding Fitted value. The Residual vs Fitted plot below indicated that the residuals were normally distributed with a mean close to 0.
+- The Normal QQ plot shows the standardized residuals relative to the theoretical quantiles of normality. Since most of the points fall on the dotted line, there is no possibility of multicollinearity issues. Even though the ends of the plotted points deviate away from the line, the points do not form a distinct S shape. Therefore, it would not cause any problem.
+- The Scale-Location plot shows the standardized residuals relative to the fitted values. Because there is randomness in the point distribution, there should not be any significant problem in this model. 
+- The Residuals vs Leverage plot shows the relationship between each residual and the leverage that each row had on the model. Rows that have a level of leverage that might be problematic will be shown outside of a red dashed line representing Cook's distance, which is a statistical message of problematic levels of leverage. Since there is no observation being plotted outside of a red dashed line, the model is not over-influenced by problematic points.
+
+```{r, warning=FALSE, echo=FALSE}
+plot(model)
+```
+
+
